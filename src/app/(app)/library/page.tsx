@@ -6,12 +6,12 @@ import {
   Loader2,
   Library,
   RefreshCw,
-  Pencil,
   Search,
   Filter,
   ImageIcon,
   Video,
   SlidersHorizontal,
+  ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,6 +48,9 @@ export default function LibraryPage() {
   const [search, setSearch] = useState("")
   const [filterPlatform, setFilterPlatform] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
+  const [aiScores, setAiScores] = useState<Record<string, number>>({})
+  const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
+  const [checkingAll, setCheckingAll] = useState(false)
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
@@ -56,6 +59,8 @@ export default function LibraryPage() {
       if (!res.ok) throw new Error("Failed to load posts")
       const data = await res.json()
       setPosts(data.posts ?? [])
+      setAiScores({})
+      setCheckingPostIds({})
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load posts")
     } finally {
@@ -75,6 +80,36 @@ export default function LibraryPage() {
     setPosts((prev) => prev.filter((p) => p.id !== id))
   }, [])
 
+  const runAiCheckForPost = useCallback(async (post: PostRow) => {
+    setCheckingPostIds((prev) => ({ ...prev, [post.id]: true }))
+    try {
+      const res = await fetch("/api/improve-post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption: post.caption,
+          platform: post.platform,
+          hashtags: post.hashtags,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "AI check failed")
+      }
+
+      const data = await res.json()
+      const rawScore = Number(data?.evaluation?.score ?? 0)
+      const normalized = Math.max(1, Math.min(10, Number.isFinite(rawScore) ? rawScore : 0))
+      const percent = normalized * 10
+      setAiScores((prev) => ({ ...prev, [post.id]: percent }))
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "AI check failed")
+    } finally {
+      setCheckingPostIds((prev) => ({ ...prev, [post.id]: false }))
+    }
+  }, [])
+
   const filtered = posts.filter((p) => {
     if (filterPlatform !== "all" && p.platform !== filterPlatform) return false
     if (filterStatus !== "all" && p.status !== filterStatus) return false
@@ -88,6 +123,20 @@ export default function LibraryPage() {
     }
     return true
   })
+
+  const runAiCheckForAll = useCallback(async () => {
+    if (filtered.length === 0) return
+    setCheckingAll(true)
+    try {
+      for (const post of filtered) {
+        // eslint-disable-next-line no-await-in-loop
+        await runAiCheckForPost(post)
+      }
+      toast.success("AI checker complete")
+    } finally {
+      setCheckingAll(false)
+    }
+  }, [filtered, runAiCheckForPost])
 
   const platforms = Array.from(new Set(posts.map((p) => p.platform)))
 
@@ -151,6 +200,16 @@ export default function LibraryPage() {
         <span className="text-xs text-muted-foreground ml-auto">
           {filtered.length} post{filtered.length !== 1 ? "s" : ""}
         </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={runAiCheckForAll}
+          disabled={checkingAll || filtered.length === 0}
+          className="gap-1.5"
+        >
+          {checkingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+          {checkingAll ? "Checking..." : "Run AI Checker"}
+        </Button>
       </div>
 
       {/* Posts grid */}
@@ -170,7 +229,20 @@ export default function LibraryPage() {
           {filtered.map((post) => (
             <div
               key={post.id}
-              className="bg-card border rounded-xl overflow-hidden flex flex-col group hover:border-primary/60 transition-colors"
+              className="bg-card border rounded-xl overflow-hidden flex flex-col group hover:border-primary/60 transition-colors cursor-pointer"
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedPost(post)
+                setModalOpen(true)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  setSelectedPost(post)
+                  setModalOpen(true)
+                }
+              }}
             >
               {/* Image thumbnail */}
               {post.image_url && (
@@ -206,6 +278,29 @@ export default function LibraryPage() {
                   )}
                 </div>
 
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs">
+                    AI: {aiScores[post.id] ? `${aiScores[post.id]}%` : "Not checked"}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs ml-auto"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void runAiCheckForPost(post)
+                    }}
+                    disabled={!!checkingPostIds[post.id] || checkingAll}
+                  >
+                    {checkingPostIds[post.id] ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {checkingPostIds[post.id] ? "Checking" : "Check"}
+                  </Button>
+                </div>
+
                 {/* Caption */}
                 <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
                   {post.caption ?? "(no caption)"}
@@ -239,19 +334,7 @@ export default function LibraryPage() {
                   </p>
                 )}
 
-                {/* Edit button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-auto gap-1.5 w-full"
-                  onClick={() => {
-                    setSelectedPost(post)
-                    setModalOpen(true)
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Edit Post
-                </Button>
+                <p className="text-xs text-muted-foreground mt-auto">Click card to open full post</p>
               </div>
             </div>
           ))}

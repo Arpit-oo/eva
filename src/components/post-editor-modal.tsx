@@ -377,7 +377,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="w-[96vw] max-w-5xl max-h-[96vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="capitalize">Edit {platform} Post</DialogTitle>
         </DialogHeader>
