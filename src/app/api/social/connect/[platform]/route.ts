@@ -12,6 +12,11 @@ export async function GET(
       return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
     }
 
+    if (platform === "instagram" || platform === "facebook") {
+      const proxyUrl = new URL(`/api/social/meta/connect?platform=${platform}`, request.url)
+      return NextResponse.redirect(proxyUrl)
+    }
+
     const state = `${Date.now()}:${Math.random().toString(36).slice(2, 12)}`
     const url = getOAuthAuthorizeUrl(platform, request.url, state)
     return NextResponse.redirect(url)

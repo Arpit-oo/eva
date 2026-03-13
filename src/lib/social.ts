@@ -41,6 +41,12 @@ function parseJsonSafe(text: string) {
   }
 }
 
+function getMetaRedirectUri() {
+  const configured = process.env.META_REDIRECT_URI?.trim()
+  if (configured) return configured.replace(/\/$/, "")
+  return "https://eva-project.vercel.app/api/social/meta/callback"
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -51,6 +57,9 @@ export function getOAuthRedirectUri(platform: SocialPlatform, requestUrl: string
   }
   if (platform === "twitter") {
     return `${getAppBaseUrl(requestUrl)}/api/social/x/callback`
+  }
+  if (platform === "facebook" || platform === "instagram") {
+    return getMetaRedirectUri()
   }
   return `${getAppBaseUrl(requestUrl)}/api/social/callback/${platform}`
 }
@@ -90,9 +99,10 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
       client_id: appId,
       redirect_uri: redirectUri,
       state,
+      response_type: "code",
       scope: "pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management",
     })
-    return `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`
+    return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
   }
 
   throw new Error(`Unsupported platform: ${platform}`)

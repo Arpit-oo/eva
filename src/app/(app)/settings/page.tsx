@@ -118,6 +118,10 @@ export default function SettingsPage() {
 
   async function connectPlatform(platform: SocialPlatform) {
     setConnectingPlatform(platform)
+    if (platform === "instagram" || platform === "facebook") {
+      window.location.href = `/api/social/meta/connect?platform=${platform}`
+      return
+    }
     window.location.href = `/api/social/connect/${platform}`
   }
 
