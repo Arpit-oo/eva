@@ -15,7 +15,8 @@ export const config = {
      * - public folder
      * - api/cron (cron jobs use their own secret auth)
      * - api/telegram-webhook (telegram uses its own validation)
+     * - api/social (OAuth routes manage their own auth/redirect handling)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/cron|api/telegram-webhook).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/cron|api/telegram-webhook|api/social).*)",
   ],
 }
