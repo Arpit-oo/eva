@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react"
 import { toast } from "sonner"
+import { generateAndUploadPostImage } from "@/lib/puter-image"
 import {
   Dialog,
   DialogContent,
@@ -9,6 +10,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -20,15 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Loader2, Trash2, ImageIcon, Upload, Video, BookmarkPlus, ChevronDown, Play, Sparkles, CalendarClock } from "lucide-react"
+import { Loader2, Trash2, ImageIcon, Video, BookmarkPlus, Sparkles, CalendarClock } from "lucide-react"
 import type { PostRow, SocialPlatform } from "@/lib/types"
-import { generateAndAttachPostImage } from "@/lib/puter-image"
 
 const PLATFORMS: SocialPlatform[] = ["linkedin", "twitter", "instagram", "facebook"]
 
@@ -48,6 +50,7 @@ interface Props {
 }
 
 export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }: Props) {
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null)
   const [caption, setCaption] = useState(post.caption)
   const [hashtagsStr, setHashtagsStr] = useState((post.hashtags ?? []).join(", "))
   const [platform, setPlatform] = useState<SocialPlatform>(post.platform)
@@ -59,13 +62,13 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [generatingImage, setGeneratingImage] = useState(false)
-  const [generatingVideo, setGeneratingVideo] = useState<false | "fal" | "veo2">(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [videoMvpOpen, setVideoMvpOpen] = useState(false)
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [publishingNow, setPublishingNow] = useState(false)
+  const [connectDrawerOpen, setConnectDrawerOpen] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
-  const [uploadingImage, setUploadingImage] = useState(false)
-  const imageFileInputRef = useRef<HTMLInputElement | null>(null)
   const [evaluation, setEvaluation] = useState<{
     score: number
     strengths: string[]
@@ -147,23 +150,19 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   }
 
   async function handleGenerateImage() {
-    const fallbackPrompt = caption.trim().slice(0, 500)
-    const effectivePrompt = imagePrompt.trim() || fallbackPrompt
-    if (!effectivePrompt) {
-      toast.error("Add a visual prompt or caption first")
+    const prompt = imagePrompt.trim() || caption.trim()
+    if (!prompt) {
+      toast.error("Enter a visual prompt or caption first")
       return
     }
-
     setGeneratingImage(true)
     try {
-      const image_url = await generateAndAttachPostImage({
-        id: post.id,
-        caption,
-        image_prompt: effectivePrompt,
+      const result = await generateAndUploadPostImage({
+        prompt,
+        postId: post.id,
       })
-      setImageUrl(image_url)
-      if (!imagePrompt.trim()) setImagePrompt(effectivePrompt)
-      toast.success("Image generated with Puter")
+      setImageUrl(result.imageUrl)
+      toast.success("Image generated!")
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Image generation failed")
     } finally {
@@ -171,57 +170,59 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
     }
   }
 
-  async function handleGenerateVideo(provider: "fal" | "veo2") {
-    const videoPrompt = imagePrompt.trim() || caption.slice(0, 500)
-    if (!videoPrompt) {
-      toast.error("Enter a visual prompt first")
-      return
-    }
-    setGeneratingVideo(provider)
-    try {
-      const res = await fetch("/api/generate/video", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: videoPrompt, post_id: post.id, provider }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? "Video generation failed")
+  async function fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result)
+          return
+        }
+        reject(new Error("Failed to read selected image"))
       }
-      const data = await res.json()
-      setVideoUrl(data.video_url)
-      toast.success(`Video generated via ${provider === "veo2" ? "Google Veo 2" : "fal.ai"}!`)
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Video generation failed")
-    } finally {
-      setGeneratingVideo(false)
-    }
+      reader.onerror = () => reject(reader.error ?? new Error("Failed to read selected image"))
+      reader.readAsDataURL(file)
+    })
   }
 
-  async function handleUploadImage(file: File) {
+  async function handleUploadImageFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file")
+      return
+    }
+
     setUploadingImage(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const res = await fetch(`/api/posts/${post.id}/image-upload`, {
+      const imageBase64 = await fileToDataUrl(file)
+      const res = await fetch("/api/generate/image", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_base64: imageBase64,
+          mime_type: file.type,
+          post_id: post.id,
+        }),
       })
 
+      const data = await res.json()
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? "Image upload failed")
+        throw new Error(data.error ?? "Image upload failed")
       }
 
-      const data = await res.json()
       setImageUrl(data.image_url)
-      toast.success("Image uploaded")
+      toast.success("Image uploaded!")
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Image upload failed")
     } finally {
       setUploadingImage(false)
+      if (imageFileInputRef.current) {
+        imageFileInputRef.current.value = ""
+      }
     }
+  }
+
+  async function handleGenerateVideo() {
+    setVideoMvpOpen(true)
   }
 
   async function handleAnalyze() {
@@ -320,6 +321,11 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   }
 
   async function handlePublishNow() {
+    if (platform === "twitter") {
+      toast.warning("Sorry, publishing directly to Twitter/X is not available in MVP because it has a direct cost.")
+      return
+    }
+
     setPublishingNow(true)
     try {
       // Persist current edits before publish.
@@ -352,6 +358,10 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
       const payload = await pubRes.json()
 
       if (!pubRes.ok) {
+        if (typeof payload?.error === "string" && payload.error.toLowerCase().includes("not connected")) {
+          setConnectDrawerOpen(true)
+          return
+        }
         onSaved(payload.post as PostRow)
         throw new Error(payload.error ?? "Publish failed")
       }
@@ -369,16 +379,16 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const charCount = caption.length
   const charLimit = platform === "twitter" ? 280 : platform === "linkedin" ? 3000 : 2200
   const overLimit = charCount > charLimit
-  const anyGenerating = generatingImage || !!generatingVideo || analyzing || uploadingImage
+  const anyGenerating = generatingImage || uploadingImage || analyzing
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[96vw] max-w-5xl max-h-[96vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex w-[min(96vw,1100px)] max-w-4xl max-h-[90vh] flex-col p-0">
+        <DialogHeader className="border-b border-white/10 px-5 py-4 sm:px-6">
           <DialogTitle className="capitalize">Edit {platform} Post</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4 sm:px-6">
           {/* Platform */}
           <div className="space-y-1.5">
             <Label>Platform</Label>
@@ -514,7 +524,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
           {/* Schedule */}
           <div className="space-y-2">
             <Label>Schedule</Label>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Date</Label>
                 <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
@@ -554,30 +564,6 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
               placeholder="Describe the visual for this post — used for both image and video generation..."
             />
             <div className="flex flex-wrap gap-2">
-              <input
-                ref={imageFileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  void handleUploadImage(file)
-                  e.currentTarget.value = ""
-                }}
-              />
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => imageFileInputRef.current?.click()}
-                disabled={anyGenerating}
-                className="gap-1.5"
-              >
-                {uploadingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                {uploadingImage ? "Uploading..." : "Upload Image"}
-              </Button>
-
               {/* Generate Image */}
               <Button
                 variant="outline"
@@ -594,32 +580,38 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
                 {generatingImage ? "Generating..." : "Generate Image (Puter)"}
               </Button>
 
-              {/* Generate Video dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" disabled={anyGenerating} className="gap-1.5">
-                    {generatingVideo ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Video className="h-3.5 w-3.5" />
-                    )}
-                    {generatingVideo
-                      ? `Generating via ${generatingVideo === "veo2" ? "Veo 2" : "fal.ai"}...`
-                      : "Generate Video"}
-                    {!generatingVideo && <ChevronDown className="h-3 w-3" />}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => handleGenerateVideo("fal")}>
-                    <Video className="h-3.5 w-3.5 mr-2" />
-                    fal.ai — WanVideo 2.1 (fast, ~30s)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleGenerateVideo("veo2")}>
-                    <Play className="h-3.5 w-3.5 mr-2" />
-                    Google Veo 2 (cinematic, ~2-3 min)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <input
+                ref={imageFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    handleUploadImageFile(file)
+                  }
+                }}
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => imageFileInputRef.current?.click()}
+                disabled={anyGenerating}
+                className="gap-1.5"
+              >
+                {uploadingImage ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ImageIcon className="h-3.5 w-3.5" />
+                )}
+                {uploadingImage ? "Uploading..." : "Upload Image"}
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={handleGenerateVideo} disabled={anyGenerating} className="gap-1.5">
+                <Video className="h-3.5 w-3.5" />
+                Generate Video (Replicate)
+              </Button>
             </div>
           </div>
 
@@ -669,8 +661,9 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
           )}
         </div>
 
-        <DialogFooter className="flex-row items-center justify-between gap-2 pt-2">
-          <div className="flex gap-2">
+        <DialogFooter className="border-t border-white/10 px-5 py-4 sm:px-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full">
+            <div className="flex flex-col gap-2 sm:flex-row">
             <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting || saving}>
               {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
               Delete
@@ -679,8 +672,8 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
               {savingTemplate ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookmarkPlus className="h-4 w-4" />}
               Save as Template
             </Button>
-          </div>
-          <div className="flex gap-2">
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap md:justify-end">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancel
             </Button>
@@ -696,9 +689,42 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Save Post
             </Button>
+            </div>
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <Sheet open={connectDrawerOpen} onOpenChange={setConnectDrawerOpen}>
+        <SheetContent side="right" className="border-white/10 bg-card/95 backdrop-blur">
+          <SheetHeader>
+            <SheetTitle>Social Account Not Connected</SheetTitle>
+            <SheetDescription>
+              Oops, looks like you haven&apos;t connected your socials with us. Post it manually or connect it now in Settings.
+            </SheetDescription>
+          </SheetHeader>
+          <SheetFooter className="mt-6">
+            <Button onClick={() => setConnectDrawerOpen(false)} className="w-full sm:w-auto">
+              Got it
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={videoMvpOpen} onOpenChange={setVideoMvpOpen}>
+        <SheetContent side="right" className="border-white/10 bg-card/95 backdrop-blur">
+          <SheetHeader>
+            <SheetTitle>Video Generation Unavailable</SheetTitle>
+            <SheetDescription>
+              Sorry, this costs us too much for MVP (I am broke).
+            </SheetDescription>
+          </SheetHeader>
+          <SheetFooter className="mt-6">
+            <Button onClick={() => setVideoMvpOpen(false)} className="w-full sm:w-auto">
+              Got it
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </Dialog>
   )
 }

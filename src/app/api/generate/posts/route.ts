@@ -87,7 +87,7 @@ Respond with ONLY valid JSON matching this exact shape — no markdown, no expla
       "platform": "string (exact platform name)",
       "caption": "string (platform-appropriate caption)",
       "hashtags": ["string"],
-      "image_prompt": "string (detailed DALL-E prompt for the post visual)",
+      "image_prompt": "string (detailed prompt for the post visual)",
       "best_posting_time": "string (HH:MM 24h format)"
     }
   ]

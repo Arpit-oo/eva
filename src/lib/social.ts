@@ -47,6 +47,12 @@ function parseJsonSafe(text: string) {
   }
 }
 
+function getMetaRedirectUri() {
+  // Must exactly match the redirect URI whitelisted in Meta app settings.
+  return "https://eva-project.vercel.app/api/social/meta/callback"
+}
+
+
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -57,6 +63,9 @@ export function getOAuthRedirectUri(platform: SocialPlatform, requestUrl: string
   }
   if (platform === "twitter") {
     return `${getAppBaseUrl(requestUrl)}/api/social/x/callback`
+  }
+  if (platform === "facebook" || platform === "instagram") {
+    return getMetaRedirectUri()
   }
   return `${getAppBaseUrl(requestUrl)}/api/social/callback/${platform}`
 }
@@ -92,13 +101,16 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
 
   if (platform === "facebook" || platform === "instagram") {
     const appId = assertEnv("META_APP_ID")
+    const configId = assertEnv("META_CONFIG_ID")
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
       state,
-      scope: "pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management",
+      response_type: "code",
+      config_id: configId,
+      auth_type: "rerequest",
     })
-    return `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`
+    return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
   }
 
   throw new Error(`Unsupported platform: ${platform}`)
@@ -322,9 +334,7 @@ export async function handleOAuthCallback(args: {
 
   if (args.platform === "facebook" || args.platform === "instagram") {
     const tokens = await exchangeMetaCode(args.code, redirectUri)
-    const accessToken = tokens.accessToken
-    console.log("META ACCESS TOKEN:", accessToken)
-    const pages = await getMetaPages(accessToken)
+    const pages = await getMetaPages(tokens.accessToken)
 
     if (args.platform === "facebook") {
       const page = pages[0]
@@ -424,6 +434,45 @@ async function publishToTwitter(post: PostRow, connection: SocialConnectionRow) 
 
 async function publishToFacebook(post: PostRow, connection: SocialConnectionRow) {
   const message = `${post.caption}\n\n${(post.hashtags ?? []).map((h) => `#${h}`).join(" ")}`.trim()
+
+  if (post.video_url) {
+    const params = new URLSearchParams({
+      file_url: post.video_url,
+      description: message,
+      access_token: connection.access_token,
+    })
+    const res = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/videos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    })
+
+    const raw = await res.text()
+    if (!res.ok) throw new Error(`Facebook video publish failed: ${raw}`)
+    const data = parseJsonSafe(raw) as { id?: string }
+    if (!data.id) throw new Error("Facebook video publish failed: missing post id")
+    return data.id
+  }
+
+  if (post.image_url) {
+    const params = new URLSearchParams({
+      url: post.image_url,
+      caption: message,
+      access_token: connection.access_token,
+    })
+    const res = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/photos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    })
+
+    const raw = await res.text()
+    if (!res.ok) throw new Error(`Facebook image publish failed: ${raw}`)
+    const data = parseJsonSafe(raw) as { post_id?: string; id?: string }
+    if (!data.post_id && !data.id) throw new Error("Facebook image publish failed: missing post id")
+    return data.post_id ?? data.id!
+  }
+
   const params = new URLSearchParams({
     message,
     access_token: connection.access_token,

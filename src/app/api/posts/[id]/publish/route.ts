@@ -24,6 +24,15 @@ export async function POST(
 
   const postRow = post as PostRow
 
+  if (postRow.platform === "twitter") {
+    return NextResponse.json(
+      {
+        error: "Sorry, publishing directly to Twitter/X is not available in MVP because it has a direct cost.",
+      },
+      { status: 403 }
+    )
+  }
+
   const { data: connection, error: connErr } = await supabase
     .from("SocialConnections")
     .select("*")

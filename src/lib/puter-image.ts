@@ -1,112 +1,112 @@
-type PostImageInput = {
-  id: string
-  caption: string
-  image_prompt: string | null
+type PuterImageGenerator = (prompt: string | { prompt: string }) => Promise<unknown>
+
+export type PuterGeneratedImage = {
+  localUrl: string
+  base64Url: string
+  mimeType: string
 }
 
-function normalizeDataUrl(base64: string) {
-  if (base64.startsWith("data:")) return base64
-  return `data:image/png;base64,${base64}`
-}
-
-function extractImageSource(payload: unknown): string | null {
-  if (!payload) return null
-
-  if (typeof payload === "string") return payload
-
-  if (payload instanceof HTMLImageElement) {
-    return payload.src || null
-  }
-
-  if (typeof payload === "object") {
-    const candidate = payload as Record<string, unknown>
-
-    if (typeof candidate.src === "string") return candidate.src
-    if (typeof candidate.url === "string") return candidate.url
-    if (typeof candidate.image_url === "string") return candidate.image_url
-    if (typeof candidate.base64 === "string") return normalizeDataUrl(candidate.base64)
-
-    const data = candidate.data
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
-      const first = data[0] as Record<string, unknown>
-      if (typeof first.url === "string") return first.url
-      if (typeof first.b64_json === "string") return normalizeDataUrl(first.b64_json)
+function imageToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("Failed to read generated image"))
     }
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read generated image"))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function getPuterImageGenerator(): Promise<PuterImageGenerator> {
+  const puterModule = await import("@heyputer/puter.js")
+  const puter = puterModule.puter ?? puterModule.default
+  const ai = puter.ai as {
+    image?: { generate?: PuterImageGenerator }
+    txt2img: (prompt: string | { prompt: string }) => Promise<{ src?: string } | string>
   }
 
-  return null
+  if (ai.image?.generate) {
+    return ai.image.generate.bind(ai.image)
+  }
+
+  return (prompt) => ai.txt2img(prompt)
 }
 
-async function loadPuterClient() {
-  const mod = await import("@heyputer/puter.js")
-  return mod.default ?? mod.puter
-}
-
-export async function generateImageWithPuter(prompt: string): Promise<Blob> {
+export async function generateImageWithPuter(prompt: string): Promise<PuterGeneratedImage> {
   if (typeof window === "undefined") {
-    throw new Error("Puter image generation is available only in the browser")
+    throw new Error("Puter image generation must run in the browser")
   }
 
-  const textPrompt = prompt.trim()
-  if (!textPrompt) throw new Error("Image prompt is required")
-
-  const puterClient = await loadPuterClient()
-  const ai = (puterClient as unknown as { ai?: Record<string, unknown> }).ai
-  if (!ai) throw new Error("Puter AI client is unavailable")
-
-  let result: unknown = null
-
-  const imageApi = (ai as { image?: { generate?: (p: string, options?: Record<string, unknown>) => Promise<unknown> } }).image
-  if (imageApi?.generate) {
-    result = await imageApi.generate(textPrompt, { testMode: true })
-  } else {
-    const txt2img = (ai as { txt2img?: (p: string, options?: Record<string, unknown>) => Promise<unknown> }).txt2img
-    if (!txt2img) {
-      throw new Error("Puter image API is unavailable")
-    }
-    result = await txt2img(textPrompt, { testMode: true })
+  const trimmedPrompt = prompt.trim()
+  if (!trimmedPrompt) {
+    throw new Error("A prompt is required to generate an image")
   }
 
-  const src = extractImageSource(result)
-  if (!src) throw new Error("Puter did not return a valid image source")
+  const generate = await getPuterImageGenerator()
+  const result = await generate({ prompt: trimmedPrompt })
+  const localUrl = typeof result === "string"
+    ? result
+    : typeof result === "object" && result && "src" in result && typeof result.src === "string"
+    ? result.src
+    : ""
 
-  const response = await fetch(src)
+  if (!localUrl) {
+    throw new Error("Puter returned an invalid image response")
+  }
+
+  const response = await fetch(localUrl)
   if (!response.ok) {
-    throw new Error("Failed to download generated image")
+    throw new Error("Failed to read generated image data")
   }
 
-  return await response.blob()
+  const blob = await response.blob()
+  const mimeType = blob.type || "image/png"
+  const base64Url = await imageToDataUrl(blob)
+
+  return { localUrl, base64Url, mimeType }
 }
 
-export async function uploadGeneratedPostImage(postId: string, blob: Blob) {
-  const type = blob.type || "image/png"
-  const extension = type.includes("jpeg") ? "jpg" : type.split("/")[1] || "png"
-  const file = new File([blob], `puter-${Date.now()}.${extension}`, { type })
-
-  const formData = new FormData()
-  formData.append("file", file)
-
-  const res = await fetch(`/api/posts/${postId}/image-upload`, {
+export async function uploadGeneratedImage(params: {
+  imageBase64Url: string
+  mimeType?: string
+  postId?: string
+}) {
+  const res = await fetch("/api/generate/image", {
     method: "POST",
-    body: formData,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      image_base64: params.imageBase64Url,
+      mime_type: params.mimeType,
+      post_id: params.postId,
+    }),
   })
 
-  const payload = await res.json().catch(() => ({}))
+  const data = await res.json()
   if (!res.ok) {
-    const message = typeof payload?.error === "string" ? payload.error : "Image upload failed"
-    throw new Error(message)
+    throw new Error(data.error ?? "Image upload failed")
   }
 
-  if (!payload?.image_url || typeof payload.image_url !== "string") {
-    throw new Error("Image upload succeeded but URL was missing")
-  }
-
-  return payload.image_url as string
+  return data as { image_url: string }
 }
 
-export async function generateAndAttachPostImage(post: PostImageInput) {
-  const prompt = post.image_prompt?.trim() || post.caption.trim().slice(0, 500)
-  if (!prompt) throw new Error("No prompt available for image generation")
-  const blob = await generateImageWithPuter(prompt)
-  return await uploadGeneratedPostImage(post.id, blob)
+export async function generateAndUploadPostImage(params: {
+  prompt: string
+  postId?: string
+}) {
+  const generated = await generateImageWithPuter(params.prompt)
+  const uploaded = await uploadGeneratedImage({
+    imageBase64Url: generated.base64Url,
+    mimeType: generated.mimeType,
+    postId: params.postId,
+  })
+
+  return {
+    imageUrl: uploaded.image_url,
+    localUrl: generated.localUrl,
+    base64Url: generated.base64Url,
+  }
 }

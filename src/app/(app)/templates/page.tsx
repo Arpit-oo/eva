@@ -98,11 +98,11 @@ export default function TemplatesPage() {
   })
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-6 p-2 md:p-0 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="eva-surface flex items-center justify-between px-5 py-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
             <LayoutTemplate className="h-6 w-6 text-primary" />
             Templates
           </h1>
@@ -110,21 +110,21 @@ export default function TemplatesPage() {
             Reusable content frameworks. Save posts as templates from the post editor.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchTemplates} disabled={loading}>
+        <Button variant="secondary" size="sm" onClick={fetchTemplates} disabled={loading} className="rounded-xl">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Refresh
+          <span className="hidden sm:inline">Refresh</span>
         </Button>
       </div>
 
       {/* Search */}
       {templates.length > 0 && (
-        <div className="relative max-w-sm">
+        <div className="eva-surface relative max-w-md px-3 py-2.5">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search templates..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 eva-input"
           />
         </div>
       )}
@@ -135,7 +135,7 @@ export default function TemplatesPage() {
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
+        <div className="eva-surface flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
           <LayoutTemplate className="h-12 w-12 opacity-25" />
           <p className="text-sm font-medium">
             {templates.length === 0
@@ -150,9 +150,9 @@ export default function TemplatesPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((t) => (
-            <Card key={t.id} className="flex flex-col">
+            <Card key={t.id} className="eva-elevated flex flex-col rounded-2xl">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-base line-clamp-1">
@@ -190,7 +190,7 @@ export default function TemplatesPage() {
 
                 {/* Image prompt */}
                 {t.image_prompt && (
-                  <div className="flex items-start gap-1.5 rounded-md bg-muted px-2.5 py-2">
+                  <div className="flex items-start gap-1.5 rounded-xl bg-muted/60 border border-white/10 px-2.5 py-2">
                     <Sparkles className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                     <p className="text-xs text-muted-foreground line-clamp-2">{t.image_prompt}</p>
                   </div>
@@ -201,7 +201,7 @@ export default function TemplatesPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 gap-1.5"
+                  className="flex-1 gap-1.5 rounded-xl"
                   onClick={() => handleCopyToClipboard(t)}
                   disabled={copying === t.id}
                 >
@@ -216,7 +216,7 @@ export default function TemplatesPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-destructive hover:text-destructive"
+                  className="rounded-xl text-destructive hover:text-destructive"
                   onClick={() => {
                     if (confirm("Delete this template? This cannot be undone.")) {
                       handleDelete(t.id)

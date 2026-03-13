@@ -6,12 +6,12 @@ import {
   Loader2,
   Library,
   RefreshCw,
+  Pencil,
   Search,
   Filter,
   ImageIcon,
   Video,
   SlidersHorizontal,
-  ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,8 +48,6 @@ export default function LibraryPage() {
   const [search, setSearch] = useState("")
   const [filterPlatform, setFilterPlatform] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
-  const [aiScores, setAiScores] = useState<Record<string, number>>({})
-  const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
@@ -58,8 +56,6 @@ export default function LibraryPage() {
       if (!res.ok) throw new Error("Failed to load posts")
       const data = await res.json()
       setPosts(data.posts ?? [])
-      setAiScores({})
-      setCheckingPostIds({})
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load posts")
     } finally {
@@ -79,36 +75,6 @@ export default function LibraryPage() {
     setPosts((prev) => prev.filter((p) => p.id !== id))
   }, [])
 
-  const runAiCheckForPost = useCallback(async (post: PostRow) => {
-    setCheckingPostIds((prev) => ({ ...prev, [post.id]: true }))
-    try {
-      const res = await fetch("/api/improve-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caption: post.caption,
-          platform: post.platform,
-          hashtags: post.hashtags,
-        }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? "AI check failed")
-      }
-
-      const data = await res.json()
-      const rawScore = Number(data?.evaluation?.score ?? 0)
-      const normalized = Math.max(1, Math.min(10, Number.isFinite(rawScore) ? rawScore : 0))
-      const percent = normalized * 10
-      setAiScores((prev) => ({ ...prev, [post.id]: percent }))
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "AI check failed")
-    } finally {
-      setCheckingPostIds((prev) => ({ ...prev, [post.id]: false }))
-    }
-  }, [])
-
   const filtered = posts.filter((p) => {
     if (filterPlatform !== "all" && p.platform !== filterPlatform) return false
     if (filterStatus !== "all" && p.status !== filterStatus) return false
@@ -126,11 +92,11 @@ export default function LibraryPage() {
   const platforms = Array.from(new Set(posts.map((p) => p.platform)))
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto w-full">
+    <div className="flex flex-col gap-6 p-2 md:p-0 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="eva-surface flex items-center justify-between px-5 py-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Library className="h-6 w-6 text-primary" />
             Post Library
           </h1>
@@ -145,20 +111,20 @@ export default function LibraryPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="eva-surface flex flex-wrap gap-3 items-center px-4 py-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search captions, hashtags..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 eva-input"
           />
         </div>
         <div className="flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
           <Select value={filterPlatform} onValueChange={setFilterPlatform}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-36 rounded-xl bg-muted/60 border-white/10">
               <SelectValue placeholder="Platform" />
             </SelectTrigger>
             <SelectContent>
@@ -171,7 +137,7 @@ export default function LibraryPage() {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-32 rounded-xl bg-muted/60 border-white/10">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -204,20 +170,7 @@ export default function LibraryPage() {
           {filtered.map((post) => (
             <div
               key={post.id}
-              className="bg-card border rounded-xl overflow-hidden flex flex-col group hover:border-primary/60 transition-colors cursor-pointer"
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                setSelectedPost(post)
-                setModalOpen(true)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  setSelectedPost(post)
-                  setModalOpen(true)
-                }
-              }}
+              className="eva-elevated rounded-2xl overflow-hidden flex flex-col group hover:border-primary/60 transition-colors"
             >
               {/* Image thumbnail */}
               {post.image_url && (
@@ -234,7 +187,7 @@ export default function LibraryPage() {
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="secondary"
-                    className="capitalize text-xs"
+                    className="capitalize text-xs rounded-full"
                     style={{
                       backgroundColor: (PLATFORM_COLORS[post.platform] ?? "#6366f1") + "20",
                       color: PLATFORM_COLORS[post.platform] ?? "#6366f1",
@@ -242,7 +195,7 @@ export default function LibraryPage() {
                   >
                     {post.platform === "twitter" ? "Twitter/X" : post.platform}
                   </Badge>
-                  <Badge variant={STATUS_VARIANTS[post.status] ?? "outline"} className="capitalize text-xs">
+                  <Badge variant={STATUS_VARIANTS[post.status] ?? "outline"} className="capitalize text-xs rounded-full">
                     {post.status}
                   </Badge>
                   {post.video_url && (
@@ -251,29 +204,6 @@ export default function LibraryPage() {
                   {post.image_url && !post.video_url && (
                     <ImageIcon className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
                   )}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
-                    AI: {aiScores[post.id] ? `${aiScores[post.id]}%` : "Not checked"}
-                  </Badge>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-xs ml-auto"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void runAiCheckForPost(post)
-                    }}
-                    disabled={!!checkingPostIds[post.id]}
-                  >
-                    {checkingPostIds[post.id] ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <ShieldCheck className="h-3.5 w-3.5 mr-1" />
-                    )}
-                    {checkingPostIds[post.id] ? "Checking" : "Check"}
-                  </Button>
                 </div>
 
                 {/* Caption */}
@@ -309,7 +239,19 @@ export default function LibraryPage() {
                   </p>
                 )}
 
-                <p className="text-xs text-muted-foreground mt-auto">Click card to open full post</p>
+                {/* Edit button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-auto gap-1.5 w-full"
+                  onClick={() => {
+                    setSelectedPost(post)
+                    setModalOpen(true)
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit Post
+                </Button>
               </div>
             </div>
           ))}

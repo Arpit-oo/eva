@@ -10,47 +10,47 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --background: 226 31% 9%;
+    --foreground: 220 20% 96%;
+    --card: 226 30% 12%;
+    --card-foreground: 220 20% 96%;
+    --popover: 226 30% 12%;
+    --popover-foreground: 220 20% 96%;
+    --primary: 213 95% 64%;
+    --primary-foreground: 220 30% 10%;
+    --secondary: 226 24% 17%;
+    --secondary-foreground: 220 20% 96%;
+    --muted: 226 20% 16%;
+    --muted-foreground: 220 12% 72%;
+    --accent: 226 24% 17%;
+    --accent-foreground: 220 20% 96%;
+    --destructive: 2 80% 62%;
+    --destructive-foreground: 220 20% 98%;
+    --border: 220 23% 26%;
+    --input: 226 24% 19%;
+    --ring: 213 95% 64%;
+    --radius: 1rem;
   }
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --background: 226 31% 8%;
+    --foreground: 220 20% 96%;
+    --card: 226 30% 11%;
+    --card-foreground: 220 20% 96%;
+    --popover: 226 30% 11%;
+    --popover-foreground: 220 20% 96%;
+    --primary: 213 95% 64%;
+    --primary-foreground: 220 30% 10%;
+    --secondary: 226 24% 17%;
+    --secondary-foreground: 220 20% 96%;
+    --muted: 226 20% 16%;
+    --muted-foreground: 220 12% 72%;
+    --accent: 226 24% 17%;
+    --accent-foreground: 220 20% 96%;
+    --destructive: 2 80% 62%;
+    --destructive-foreground: 220 20% 98%;
+    --border: 220 23% 26%;
+    --input: 226 24% 19%;
+    --ring: 213 95% 64%;
   }
   .theme {
     --font-sans: var(--font-sans);
@@ -59,9 +59,135 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(circle at 10% 10%, rgba(77, 132, 255, 0.14), transparent 38%),
+      radial-gradient(circle at 86% 3%, rgba(94, 208, 255, 0.1), transparent 35%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 22%);
   }
   html {
     @apply font-sans;
+  }
+}
+
+@layer components {
+  .eva-surface {
+    @apply rounded-2xl border border-white/10 bg-card/90 shadow-[0_10px_30px_rgba(0,0,0,0.24)] backdrop-blur;
+  }
+
+  .eva-elevated {
+    @apply border border-white/10 bg-card/95 shadow-[0_14px_34px_rgba(0,0,0,0.3)] transition-transform duration-200 hover:-translate-y-0.5;
+  }
+
+  .eva-input {
+    @apply border-white/10 bg-muted/70 ring-offset-transparent placeholder:text-muted-foreground/90 focus-visible:ring-primary/70;
+  }
+}
+
+@layer components {
+  .eva-calendar .fc {
+    --fc-border-color: transparent;
+    --fc-daygrid-event-dot-width: 6px;
+    --fc-page-bg-color: transparent;
+    --fc-neutral-bg-color: transparent;
+    --fc-today-bg-color: transparent;
+    --fc-button-bg-color: hsl(var(--secondary));
+    --fc-button-border-color: transparent;
+    --fc-button-hover-bg-color: hsl(var(--primary));
+    --fc-button-hover-border-color: transparent;
+    --fc-button-active-bg-color: hsl(var(--primary));
+    --fc-button-active-border-color: transparent;
+    --fc-button-text-color: hsl(var(--foreground));
+  }
+
+  .eva-calendar .fc-toolbar-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .eva-calendar .fc-daygrid-day-frame {
+    margin: 4px;
+    min-height: 130px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.02);
+    padding: 6px;
+  }
+
+  .eva-calendar .fc-daygrid-day-top {
+    justify-content: flex-start;
+    padding: 2px 4px;
+  }
+
+  .eva-calendar .fc-day-today .fc-daygrid-day-frame {
+    border-color: rgba(96, 167, 255, 0.5);
+    background: linear-gradient(145deg, rgba(80, 142, 255, 0.2), rgba(58, 99, 180, 0.08));
+    box-shadow: 0 0 0 1px rgba(88, 151, 255, 0.18), 0 16px 34px rgba(6, 15, 36, 0.45);
+  }
+
+  .eva-calendar .fc-daygrid-day-number {
+    color: hsl(var(--foreground));
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .eva-calendar .fc-col-header-cell-cushion {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    padding: 0.7rem 0;
+  }
+
+  .eva-calendar .fc-daygrid-day-events {
+    margin-top: 2px;
+    overflow: hidden;
+  }
+
+  .eva-calendar .fc-daygrid-event {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    border: 0;
+    border-radius: 10px;
+    background: rgba(98, 151, 255, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  .eva-calendar .fc-daygrid-event-harness {
+    margin-top: 6px;
+  }
+
+  .eva-calendar .fc-daygrid-event .fc-event-main {
+    overflow: hidden;
+  }
+
+  .eva-calendar .fc-timegrid-slot-label-cushion,
+  .eva-calendar .fc-timegrid-axis-cushion {
+    color: hsl(var(--muted-foreground));
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+  }
+
+  .eva-calendar .fc-timegrid-col,
+  .eva-calendar .fc-timegrid-slot {
+    border-color: rgba(255, 255, 255, 0.06);
+  }
+
+  .eva-calendar .fc-timegrid-event {
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 12px;
+    background: rgba(98, 151, 255, 0.2);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+  }
+
+  .eva-calendar .fc-timegrid-event .fc-event-main {
+    padding: 4px 7px;
+  }
+
+  .eva-calendar .fc-timegrid-now-indicator-line {
+    border-color: rgba(99, 168, 255, 0.9);
   }
 }

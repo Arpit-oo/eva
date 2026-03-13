@@ -20,7 +20,7 @@ export default async function AppLayout({
 
   const { data: userData } = await supabase
     .from("Users")
-    .select("onboarding_complete, full_name")
+    .select("onboarding_complete, name")
     .eq("id", user.id)
     .single()
 
@@ -32,8 +32,8 @@ export default async function AppLayout({
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header userEmail={user.email} userName={userData?.full_name ?? undefined} />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <Header userEmail={user.email} userName={userData?.name ?? undefined} />
+        <main className="flex-1 overflow-y-auto px-5 py-4 md:px-7 md:py-5">{children}</main>
       </div>
     </div>
   )

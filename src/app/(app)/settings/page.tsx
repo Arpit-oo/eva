@@ -238,22 +238,22 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
+    <div className="space-y-6">
+      <div className="eva-surface px-5 py-4">
+        <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-muted-foreground">Manage brand profiles and integrations.</p>
       </div>
 
       {/* Brand Profiles */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+      <Card className="eva-surface">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle id="profile">Brand Profiles</CardTitle>
             <CardDescription>
               Each profile has its own voice, tone, and content strategy.
             </CardDescription>
           </div>
-          <Button size="sm" onClick={openCreate}>
+          <Button size="sm" onClick={openCreate} className="rounded-xl w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-1" />
             New Profile
           </Button>
@@ -272,7 +272,7 @@ export default function SettingsPage() {
               {profiles.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border p-4"
+                  className="flex flex-col gap-3 rounded-xl border border-white/10 bg-muted/30 p-4 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -306,12 +306,12 @@ export default function SettingsPage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0 self-end sm:self-auto">
                     {activeProfileId !== p.id && (
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs"
+                        className="text-xs rounded-xl"
                         onClick={() => handleSetActive(p.id)}
                       >
                         Set Active
@@ -321,6 +321,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => openEdit(p)}
+                      className="rounded-xl"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -328,7 +329,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDelete(p.id)}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="rounded-xl text-muted-foreground hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -341,7 +342,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Social Integrations */}
-      <Card>
+      <Card className="eva-surface">
         <CardHeader>
           <CardTitle>Social Integrations</CardTitle>
           <CardDescription>
@@ -349,18 +350,14 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {(["linkedin", "twitter", "instagram", "facebook"] as SocialPlatform[]).map((platform) => {
+          {(["linkedin", "twitter"] as SocialPlatform[]).map((platform) => {
             const connection = getConnection(platform)
             const label = platform === "twitter" ? "X (Twitter)" : platform.charAt(0).toUpperCase() + platform.slice(1)
             const description = connection
               ? `Connected as ${connection.platform_username ?? connection.platform_user_id}`
-              : platform === "instagram"
-              ? "Requires an Instagram Business account linked to a Facebook Page"
-              : platform === "facebook"
-              ? "Connect a Facebook Page to publish directly"
               : "Not connected"
             return (
-              <div key={platform} className="flex items-center justify-between rounded-lg border p-3">
+              <div key={platform} className="flex flex-col gap-3 rounded-xl border border-white/10 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-sm">{label}</p>
                   <p className="text-xs text-muted-foreground">{description}</p>
@@ -371,7 +368,7 @@ export default function SettingsPage() {
                     size="sm"
                     onClick={() => disconnectPlatform(platform)}
                     disabled={disconnectingPlatform === platform}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-xl w-full sm:w-auto"
                   >
                     {disconnectingPlatform === platform ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -385,7 +382,7 @@ export default function SettingsPage() {
                     size="sm"
                     onClick={() => connectPlatform(platform)}
                     disabled={!!connectingPlatform}
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-xl w-full sm:w-auto"
                   >
                     {connectingPlatform === platform ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -402,7 +399,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Telegram Integration */}
-      <Card>
+      <Card className="eva-surface">
         <CardHeader>
           <CardTitle>Telegram Integration</CardTitle>
           <CardDescription>
@@ -414,12 +411,12 @@ export default function SettingsPage() {
             <li>
               Open{" "}
               <a
-                href="https://t.me/EVAContentBot"
+                href="https://t.me/project_evabell_bot"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-medium text-foreground underline underline-offset-2"
               >
-                @EVAContentBot
+                @project_evabell_bot
               </a>{" "}
               on Telegram
             </li>
@@ -434,21 +431,22 @@ export default function SettingsPage() {
           {telegramToken ? (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Your Link Token</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 rounded bg-muted px-3 py-2 text-sm font-mono break-all">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="flex-1 rounded-xl bg-muted px-3 py-2 text-sm font-mono break-all">
                   {telegramToken}
                 </code>
-                <Button variant="outline" size="icon" onClick={copyToken}>
+                <Button variant="outline" size="icon" onClick={copyToken} className="rounded-xl self-end sm:self-auto">
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 rounded bg-muted px-3 py-2 text-xs font-mono text-muted-foreground break-all">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="flex-1 rounded-xl bg-muted px-3 py-2 text-xs font-mono text-muted-foreground break-all">
                   /start {telegramToken}
                 </code>
                 <Button
                   variant="outline"
                   size="icon"
+                  className="rounded-xl self-end sm:self-auto"
                   onClick={() => {
                     navigator.clipboard.writeText(`/start ${telegramToken}`)
                     toast.success("Command copied!")
@@ -486,6 +484,7 @@ export default function SettingsPage() {
                   setForm((f) => ({ ...f, brand_name: e.target.value }))
                 }
                 placeholder="Acme Corp"
+                className="eva-input"
               />
             </div>
             <div className="space-y-2">
@@ -496,6 +495,7 @@ export default function SettingsPage() {
                   setForm((f) => ({ ...f, industry: e.target.value }))
                 }
                 placeholder="SaaS, E-commerce, Healthcare…"
+                className="eva-input"
               />
             </div>
             <div className="space-y-2">
@@ -504,7 +504,7 @@ export default function SettingsPage() {
                 value={form.tone}
                 onValueChange={(v) => v && setForm((f) => ({ ...f, tone: v }))}
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl bg-muted/60 border-white/10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -528,7 +528,7 @@ export default function SettingsPage() {
                 }
                 placeholder="CTOs at mid-size SaaS companies…"
                 rows={2}
-                className="resize-none"
+                className="resize-none eva-input"
               />
             </div>
             <div className="space-y-2">
@@ -539,7 +539,7 @@ export default function SettingsPage() {
                   v && setForm((f) => ({ ...f, posting_frequency: v }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger className="rounded-xl bg-muted/60 border-white/10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -564,8 +564,9 @@ export default function SettingsPage() {
                     }
                   }}
                   placeholder="Type and press Enter"
+                  className="eva-input"
                 />
-                <Button variant="outline" size="sm" onClick={addKeyword}>
+                <Button variant="outline" size="sm" onClick={addKeyword} className="rounded-xl">
                   Add
                 </Button>
               </div>
@@ -586,10 +587,10 @@ export default function SettingsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl">
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="rounded-xl">
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {editingId ? "Save Changes" : "Create Profile"}
             </Button>

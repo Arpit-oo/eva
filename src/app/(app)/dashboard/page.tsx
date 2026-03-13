@@ -137,63 +137,63 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">
+      <div className="eva-surface px-5 py-4">
+        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <p className="text-muted-foreground text-sm mt-1">
           Welcome back — here&apos;s your content at a glance.
         </p>
       </div>
 
       {/* Stats row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="eva-elevated">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <div className="p-2 rounded-xl bg-blue-500/20 border border-blue-400/30">
+                <Calendar className="h-4 w-4 text-blue-300" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Scheduled</p>
-                <p className="text-2xl font-bold">{stats.scheduled}</p>
+                <p className="text-2xl font-semibold">{stats.scheduled}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="eva-elevated">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                <Send className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30">
+                <Send className="h-4 w-4 text-emerald-300" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Published</p>
-                <p className="text-2xl font-bold">{stats.published}</p>
+                <p className="text-2xl font-semibold">{stats.published}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="eva-elevated">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30">
-                <FileText className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+              <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/30">
+                <FileText className="h-4 w-4 text-amber-300" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Drafts</p>
-                <p className="text-2xl font-bold">{stats.drafts}</p>
+                <p className="text-2xl font-semibold">{stats.drafts}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="eva-elevated">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                <Lightbulb className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <div className="p-2 rounded-xl bg-violet-500/20 border border-violet-400/30">
+                <Lightbulb className="h-4 w-4 text-violet-300" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Ideas</p>
-                <p className="text-2xl font-bold">{stats.totalIdeas}</p>
+                <p className="text-2xl font-semibold">{stats.totalIdeas}</p>
               </div>
             </div>
           </CardContent>
@@ -202,7 +202,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Quick Idea Capture */}
-        <Card>
+        <Card className="eva-surface">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Lightbulb className="h-4 w-4" />
@@ -217,7 +217,7 @@ export default function DashboardPage() {
               onChange={(e) => setIdeaText(e.target.value)}
               onKeyDown={handleKeyDown}
               rows={3}
-              className="resize-none"
+              className="resize-none eva-input"
             />
             <Button
               onClick={handleSaveIdea}
@@ -247,7 +247,7 @@ export default function DashboardPage() {
               {ideas.map((idea) => (
                 <div
                   key={idea.id}
-                  className="flex items-start justify-between gap-2 rounded-md border p-2 text-sm bg-muted/30"
+                  className="flex items-start justify-between gap-2 rounded-xl border border-white/10 p-2.5 text-sm bg-muted/35"
                 >
                   <p className="flex-1 leading-snug">{idea.idea_text}</p>
                   <button
@@ -263,7 +263,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Recent Posts */}
-        <Card>
+        <Card className="eva-surface">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <FileText className="h-4 w-4" />
@@ -288,7 +288,7 @@ export default function DashboardPage() {
                 {recentPosts.map((post) => (
                   <div
                     key={post.id}
-                    className="flex items-start gap-3 border-b pb-3 last:border-0 last:pb-0"
+                    className="flex items-start gap-3 border-b border-white/10 pb-3 last:border-0 last:pb-0"
                   >
                     <span className="text-lg leading-none mt-0.5">
                       {platformEmoji[post.platform] ?? "📄"}

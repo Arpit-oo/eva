@@ -1,6 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useTheme } from "next-themes"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
@@ -13,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Moon, Sun, LogOut, Settings, User } from "lucide-react"
+import { Moon, Sun, LogOut, Settings, User, Plus } from "lucide-react"
 
 interface HeaderProps {
   userEmail?: string
@@ -22,8 +24,21 @@ interface HeaderProps {
 
 export default function Header({ userEmail, userName }: HeaderProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const supabase = createClient()
+
+  const pageMeta: Record<string, { title: string; subtitle: string }> = {
+    "/dashboard": { title: "Dashboard", subtitle: "Overview and quick actions" },
+    "/generate": { title: "Generate", subtitle: "Strategy and AI content creation" },
+    "/calendar": { title: "Calendar", subtitle: "Schedule and planning" },
+    "/library": { title: "Library", subtitle: "Saved and generated posts" },
+    "/templates": { title: "Templates", subtitle: "Reusable content blueprints" },
+    "/settings": { title: "Settings", subtitle: "Brand identity and integrations" },
+  }
+
+  const resolvedPage = Object.keys(pageMeta).find((route) => pathname === route || pathname.startsWith(route + "/"))
+  const currentMeta = pageMeta[resolvedPage ?? "/dashboard"]
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -37,11 +52,26 @@ export default function Header({ userEmail, userName }: HeaderProps) {
     : userEmail?.[0]?.toUpperCase() ?? "?"
 
   return (
-    <header className="h-16 border-b bg-card flex items-center justify-end px-6 gap-3">
+    <header className="h-16 border-b border-white/10 bg-card/75 backdrop-blur-xl flex items-center justify-between px-6 gap-4">
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground/90">Workspace</p>
+        <h1 className="text-base font-semibold truncate">{currentMeta.title}</h1>
+        <p className="text-xs text-muted-foreground truncate">{currentMeta.subtitle}</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button asChild variant="outline" size="sm" className="rounded-xl hidden sm:inline-flex">
+          <Link href="/settings">
+            <Plus className="h-4 w-4" />
+            New Brand Identity
+          </Link>
+        </Button>
+
       {/* Theme toggle */}
       <Button
-        variant="ghost"
+        variant="secondary"
         size="icon"
+        className="rounded-xl"
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       >
         <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -82,6 +112,7 @@ export default function Header({ userEmail, userName }: HeaderProps) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   )
 }

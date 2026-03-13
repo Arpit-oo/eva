@@ -14,6 +14,24 @@ export async function GET(request: NextRequest) {
       // Check if user has completed onboarding
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        // Safety upsert in case DB trigger wasn't applied in this environment.
+        const fallbackName =
+          (user.user_metadata?.full_name as string | undefined) ??
+          (user.user_metadata?.name as string | undefined) ??
+          user.email?.split("@")[0] ??
+          "User"
+
+        await supabase
+          .from("Users")
+          .upsert(
+            {
+              id: user.id,
+              email: user.email,
+              name: fallbackName,
+            },
+            { onConflict: "id" }
+          )
+
         const { data: userData } = await supabase
           .from("Users")
           .select("onboarding_complete")

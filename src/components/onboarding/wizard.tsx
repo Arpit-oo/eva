@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -22,7 +21,6 @@ import {
 } from "@/components/ui/select"
 import { Loader2, X, Sparkles, Zap, CheckCircle2 } from "lucide-react"
 
-const PLATFORMS = ["LinkedIn", "Twitter/X", "Instagram", "Facebook"] as const
 const TONES = ["Professional", "Casual", "Playful", "Inspirational", "Educational", "Bold"]
 const FREQUENCIES = ["Daily", "3x per week", "5x per week", "Weekly", "Twice a week"]
 
@@ -43,7 +41,6 @@ export default function OnboardingWizard() {
   const [isLoading, setIsLoading] = useState(false)
   const [keywords, setKeywords] = useState<string[]>([])
   const [keywordInput, setKeywordInput] = useState("")
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([])
 
   const {
     register,
@@ -69,23 +66,13 @@ export default function OnboardingWizard() {
     setKeywords(keywords.filter((k) => k !== kw))
   }
 
-  function togglePlatform(platform: string) {
-    setSelectedPlatforms((prev) =>
-      prev.includes(platform) ? prev.filter((p) => p !== platform) : [...prev, platform]
-    )
-  }
-
   async function onBrandSubmit(data: BrandForm) {
-    if (selectedPlatforms.length === 0) {
-      toast.error("Select at least one platform")
-      return
-    }
     setIsLoading(true)
     try {
       const res = await fetch("/api/brand-profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, keywords, platforms: selectedPlatforms }),
+        body: JSON.stringify({ ...data, keywords }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
       setStep(3)
@@ -267,28 +254,6 @@ export default function OnboardingWizard() {
                 </div>
               </div>
 
-              <div className="col-span-2 space-y-2">
-                <Label>Platforms *</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {PLATFORMS.map((platform) => (
-                    <div
-                      key={platform}
-                      onClick={() => togglePlatform(platform)}
-                      className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        selectedPlatforms.includes(platform)
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/40"
-                      }`}
-                    >
-                      <Checkbox
-                        checked={selectedPlatforms.includes(platform)}
-                        onCheckedChange={() => togglePlatform(platform)}
-                      />
-                      <span className="text-sm font-medium">{platform}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <div className="flex gap-3 pt-2">
@@ -316,8 +281,6 @@ export default function OnboardingWizard() {
               {[
                 { name: "LinkedIn", color: "bg-[#0077B5]", icon: "in" },
                 { name: "Twitter / X", color: "bg-black", icon: "𝕏" },
-                { name: "Instagram", color: "bg-gradient-to-br from-[#833AB4] via-[#FD1D1D] to-[#F77737]", icon: "IG" },
-                { name: "Facebook", color: "bg-[#1877F2]", icon: "f" },
               ].map(({ name, color, icon }) => (
                 <div
                   key={name}
@@ -329,8 +292,15 @@ export default function OnboardingWizard() {
                     </div>
                     <span className="font-medium">{name}</span>
                   </div>
-                  <Button variant="outline" size="sm" disabled>
-                    Connect (Phase 8)
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const platform = name === "LinkedIn" ? "linkedin" : "twitter"
+                      window.location.href = `/api/social/connect/${platform}`
+                    }}
+                  >
+                    Connect
                   </Button>
                 </div>
               ))}

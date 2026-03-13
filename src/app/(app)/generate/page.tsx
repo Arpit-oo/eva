@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { generateAndUploadPostImage } from "@/lib/puter-image"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,13 +20,12 @@ import {
   RefreshCw,
   Calendar,
   ChevronRight,
+  Pencil,
   FileText,
   Clock,
-  ShieldCheck,
 } from "lucide-react"
 import { PostEditorModal } from "@/components/post-editor-modal"
 import type { BrandProfileRow, StrategyRow, PostRow } from "@/lib/types"
-import { generateAndAttachPostImage } from "@/lib/puter-image"
 
 const EMOTION_COLORS: Record<string, string> = {
   Inspired: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
@@ -92,13 +92,9 @@ export default function GeneratePage() {
   // Phase 4
   const [posts, setPosts] = useState<PostRow[]>([])
   const [generatingPosts, setGeneratingPosts] = useState(false)
+  const [imageProgress, setImageProgress] = useState<{ completed: number; total: number } | null>(null)
   const [editingPost, setEditingPost] = useState<PostRow | null>(null)
   const [loadingPosts, setLoadingPosts] = useState(false)
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null)
-  const [aiScores, setAiScores] = useState<Record<string, number>>({})
-  const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
-  const [generatingImageIds, setGeneratingImageIds] = useState<Record<string, boolean>>({})
-  const [autoGeneratingImages, setAutoGeneratingImages] = useState(false)
 
   useEffect(() => {
     loadInit()
@@ -148,78 +144,9 @@ export default function GeneratePage() {
       if (res.ok) {
         const data = await res.json()
         setPosts(data.posts ?? [])
-        setAiScores({})
-        setCheckingPostIds({})
-        setGeneratingImageIds({})
       }
     } finally {
       setLoadingPosts(false)
-    }
-  }
-
-  async function runAiCheckForPost(post: PostRow) {
-    setCheckingPostIds((prev) => ({ ...prev, [post.id]: true }))
-    try {
-      const res = await fetch("/api/improve-post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caption: post.caption,
-          platform: post.platform,
-          hashtags: post.hashtags,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? "AI check failed")
-      }
-
-      const data = await res.json()
-      const rawScore = Number(data?.evaluation?.score ?? 0)
-      const normalized = Math.max(1, Math.min(10, Number.isFinite(rawScore) ? rawScore : 0))
-      const percent = normalized * 10
-      setAiScores((prev) => ({ ...prev, [post.id]: percent }))
-      return percent
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "AI check failed")
-      return null
-    } finally {
-      setCheckingPostIds((prev) => ({ ...prev, [post.id]: false }))
-    }
-  }
-
-  async function generateImagesForPosts(generatedPosts: PostRow[]) {
-    if (generatedPosts.length === 0) return
-
-    setAutoGeneratingImages(true)
-    let successCount = 0
-    let failedCount = 0
-
-    for (const post of generatedPosts) {
-      setGeneratingImageIds((prev) => ({ ...prev, [post.id]: true }))
-      try {
-        const image_url = await generateAndAttachPostImage({
-          id: post.id,
-          caption: post.caption,
-          image_prompt: post.image_prompt,
-        })
-
-        successCount += 1
-        setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, image_url } : p)))
-      } catch {
-        failedCount += 1
-      } finally {
-        setGeneratingImageIds((prev) => ({ ...prev, [post.id]: false }))
-      }
-    }
-
-    setAutoGeneratingImages(false)
-
-    if (successCount > 0) {
-      toast.success(`Generated ${successCount} image${successCount === 1 ? "" : "s"} with Puter`)
-    }
-    if (failedCount > 0) {
-      toast.error(`${failedCount} post${failedCount === 1 ? "" : "s"} kept as text-only (image generation failed)`)
     }
   }
 
@@ -267,6 +194,7 @@ export default function GeneratePage() {
   async function handleGeneratePosts() {
     if (!selectedStrategy) return
     setGeneratingPosts(true)
+    setImageProgress(null)
     try {
       const res = await fetch("/api/generate/posts", {
         method: "POST",
@@ -280,15 +208,58 @@ export default function GeneratePage() {
       const data = await res.json()
       const generatedPosts = (data.posts ?? []) as PostRow[]
       setPosts(generatedPosts)
-      setExpandedPostId(null)
-      setAiScores({})
-      setCheckingPostIds({})
-      setGeneratingImageIds({})
-      toast.success(`${generatedPosts.length} posts generated!`)
-      void generateImagesForPosts(generatedPosts)
+
+      const candidates = generatedPosts.filter(
+        (post) => (post.image_prompt?.trim() || post.caption.trim()) && !post.image_url
+      )
+
+      if (candidates.length === 0) {
+        toast.success(`${generatedPosts.length} posts generated!`)
+        return
+      }
+
+      setImageProgress({ completed: 0, total: candidates.length })
+
+      let imageSuccesses = 0
+      let imageFailures = 0
+
+      for (let index = 0; index < candidates.length; index += 1) {
+        const post = candidates[index]
+        const prompt = post.image_prompt?.trim() || post.caption.trim()
+
+        try {
+          const result = await generateAndUploadPostImage({
+            prompt,
+            postId: post.id,
+          })
+
+          imageSuccesses += 1
+          setPosts((currentPosts) =>
+            currentPosts.map((currentPost) =>
+              currentPost.id === post.id
+                ? { ...currentPost, image_url: result.imageUrl }
+                : currentPost
+            )
+          )
+        } catch (error) {
+          imageFailures += 1
+          console.error(`Image generation failed for post ${post.id}:`, error)
+        } finally {
+          setImageProgress({ completed: index + 1, total: candidates.length })
+        }
+      }
+
+      if (imageFailures > 0) {
+        toast.success(
+          `${generatedPosts.length} posts generated. ${imageSuccesses} images attached, ${imageFailures} left as text-only.`
+        )
+      } else {
+        toast.success(`${generatedPosts.length} posts generated with images!`)
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Post generation failed")
     } finally {
+      setImageProgress(null)
       setGeneratingPosts(false)
     }
   }
@@ -323,9 +294,9 @@ export default function GeneratePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="eva-surface flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-5 py-4">
         <div>
-          <h1 className="text-2xl font-bold">Generate</h1>
+          <h1 className="text-2xl font-semibold">Generate</h1>
           <p className="text-muted-foreground text-sm">AI-powered weekly content strategy</p>
         </div>
         <div className="flex items-center gap-3">
@@ -358,7 +329,7 @@ export default function GeneratePage() {
 
       {/* No strategy yet */}
       {!selectedStrategy && !generating && (
-        <Card className="border-dashed">
+        <Card className="eva-surface border-dashed border-white/20">
           <CardContent className="flex flex-col items-center justify-center py-16 gap-4 text-muted-foreground">
             <Sparkles className="h-10 w-10 opacity-40" />
             <div className="text-center">
@@ -374,7 +345,7 @@ export default function GeneratePage() {
 
       {/* Generating skeleton */}
       {generating && (
-        <Card>
+        <Card className="eva-surface">
           <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <div className="text-center">
@@ -390,7 +361,7 @@ export default function GeneratePage() {
         <>
           {/* Strategy selector */}
           {strategies.length > 1 && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="eva-surface flex items-center gap-2 text-sm px-4 py-2">
               <span className="text-muted-foreground">Viewing strategy from:</span>
               <Select
                 value={selectedStrategy.id}
@@ -418,7 +389,7 @@ export default function GeneratePage() {
           )}
 
           {/* Week theme banner */}
-          <Card className="bg-primary text-primary-foreground border-0">
+          <Card className="border border-primary/20 bg-primary/90 text-primary-foreground shadow-[0_20px_34px_rgba(61,117,214,0.36)]">
             <CardContent className="flex items-center gap-3 py-4">
               <Calendar className="h-5 w-5 shrink-0 opacity-80" />
               <div>
@@ -435,7 +406,7 @@ export default function GeneratePage() {
           {/* 7-day strategy grid */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {selectedStrategy.strategy_json.days.map((day) => (
-              <Card key={day.day_of_week} className="relative overflow-hidden">
+              <Card key={day.day_of_week} className="eva-elevated relative overflow-hidden">
                 <CardHeader className="pb-2 pt-4">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-semibold">{day.day_of_week}</CardTitle>
@@ -469,14 +440,16 @@ export default function GeneratePage() {
 
           {/* Generate Posts CTA */}
           <div className="flex justify-end pt-2">
-            <Button onClick={handleGeneratePosts} disabled={generatingPosts} className="gap-2">
+            <Button onClick={handleGeneratePosts} disabled={generatingPosts} className="gap-2 rounded-xl">
               {generatingPosts ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <FileText className="h-4 w-4" />
               )}
               {generatingPosts
-                ? "Generating posts..."
+                ? imageProgress
+                  ? "Generating images..."
+                  : "Generating posts..."
                 : posts.length > 0
                 ? "Regenerate Posts"
                 : "Generate Posts from Strategy"}
@@ -486,13 +459,17 @@ export default function GeneratePage() {
 
           {/* Generating posts loading */}
           {generatingPosts && (
-            <Card>
+            <Card className="eva-surface">
               <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
                 <Loader2 className="h-7 w-7 animate-spin text-primary" />
                 <div className="text-center">
-                  <p className="font-medium">Writing your posts...</p>
+                  <p className="font-medium">
+                    {imageProgress ? "Generating your visuals..." : "Writing your posts..."}
+                  </p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Generating platform-specific content for all 7 days
+                    {imageProgress
+                      ? `Creating and attaching images ${imageProgress.completed}/${imageProgress.total}`
+                      : "Generating platform-specific content for all 7 days"}
                   </p>
                 </div>
               </CardContent>
@@ -502,19 +479,11 @@ export default function GeneratePage() {
           {/* Posts Grid */}
           {posts.length > 0 && !generatingPosts && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Generated Posts</h2>
-                <div className="flex items-center gap-3">
-                  {autoGeneratingImages && (
-                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Generating images with Puter...
-                    </span>
-                  )}
-                  <span className="text-sm text-muted-foreground">
-                    {posts.length} post{posts.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
+                <span className="text-sm text-muted-foreground">
+                  {posts.length} post{posts.length !== 1 ? "s" : ""}
+                </span>
               </div>
 
               {loadingPosts ? (
@@ -522,25 +491,11 @@ export default function GeneratePage() {
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {posts.map((post) => (
-                    <Card
-                      key={post.id}
-                      className="relative group cursor-pointer transition-colors hover:border-primary/50"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() =>
-                        setExpandedPostId((prev) => (prev === post.id ? null : post.id))
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault()
-                          setExpandedPostId((prev) => (prev === post.id ? null : post.id))
-                        }
-                      }}
-                    >
+                    <Card key={post.id} className="eva-elevated relative group">
                       <CardHeader className="pb-2 pt-4">
-                        <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <span
                               className={`text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
@@ -567,87 +522,37 @@ export default function GeneratePage() {
                                 {post.scheduled_time && ` · ${post.scheduled_time.slice(0, 5)}`}
                               </span>
                             )}
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 pt-2">
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {post.status}
-                          </Badge>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              AI: {aiScores[post.id] ? `${aiScores[post.id]}%` : "Not checked"}
-                            </Badge>
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                void runAiCheckForPost(post)
-                              }}
-                              disabled={!!checkingPostIds[post.id]}
+                              className="h-8 px-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                              onClick={() => setEditingPost(post)}
                             >
-                              {checkingPostIds[post.id] ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <ShieldCheck className="h-3 w-3 mr-1" />
-                              )}
-                              {checkingPostIds[post.id] ? "Checking" : "Check"}
+                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
                             </Button>
                           </div>
                         </div>
                       </CardHeader>
-                      <CardContent className="space-y-3 pb-5">
-                        {(post.image_url || generatingImageIds[post.id]) && (
-                          <div className="relative w-full h-52 rounded-md overflow-hidden border bg-muted">
-                            {generatingImageIds[post.id] ? (
-                              <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Generating image...
-                              </div>
-                            ) : (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={post.image_url ?? ""} alt="Post visual" className="w-full h-full object-cover" />
-                            )}
-                          </div>
-                        )}
-                        <p
-                          className={`text-sm leading-relaxed whitespace-pre-wrap ${
-                            expandedPostId === post.id ? "" : "line-clamp-8"
-                          }`}
-                        >
-                          {post.caption}
-                        </p>
+                      <CardContent className="space-y-3 pb-4">
+                        <p className="text-sm leading-relaxed line-clamp-4">{post.caption}</p>
                         {post.hashtags && post.hashtags.length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {(expandedPostId === post.id ? post.hashtags : post.hashtags.slice(0, 5)).map((tag) => (
+                            {post.hashtags.slice(0, 5).map((tag) => (
                               <span key={tag} className="text-xs text-primary">
                                 #{tag}
                               </span>
                             ))}
-                            {expandedPostId !== post.id && post.hashtags.length > 5 && (
+                            {post.hashtags.length > 5 && (
                               <span className="text-xs text-muted-foreground">
                                 +{post.hashtags.length - 5} more
                               </span>
                             )}
                           </div>
                         )}
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-xs text-muted-foreground">
-                            {expandedPostId === post.id ? "Full post" : "Click card to view full post"}
-                          </span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 px-2 text-xs"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingPost(post)
-                            }}
-                          >
-                            Open Editor
-                          </Button>
-                        </div>
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {post.status}
+                        </Badge>
                       </CardContent>
                     </Card>
                   ))}
