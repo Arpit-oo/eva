@@ -7,19 +7,24 @@ export async function GET(
   request: Request,
   { params }: { params: { platform: string } }
 ) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  try {
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  if (!user) return NextResponse.redirect(new URL("/login", request.url))
+    if (!user) return NextResponse.redirect(new URL("/login", request.url))
 
-  const platform = params.platform.toLowerCase() as SocialPlatform
-  if (!["linkedin", "twitter", "instagram", "facebook"].includes(platform)) {
-    return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
+    const platform = params.platform.toLowerCase() as SocialPlatform
+    if (!["linkedin", "twitter", "instagram", "facebook"].includes(platform)) {
+      return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
+    }
+
+    const state = `${user.id}:${Date.now()}`
+    const url = getOAuthAuthorizeUrl(platform, request.url, state)
+    return NextResponse.redirect(url)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to start OAuth"
+    return NextResponse.redirect(new URL(`/settings?social_error=${encodeURIComponent(message)}`, request.url))
   }
-
-  const state = `${user.id}:${Date.now()}`
-  const url = getOAuthAuthorizeUrl(platform, request.url, state)
-  return NextResponse.redirect(url)
 }
