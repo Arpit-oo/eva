@@ -48,8 +48,7 @@ function parseJsonSafe(text: string) {
 }
 
 function getMetaRedirectUri() {
-  const configured = process.env.META_REDIRECT_URI?.trim()
-  if (configured) return configured.replace(/\/$/, "")
+  // Must exactly match the redirect URI whitelisted in Meta app settings.
   return "https://eva-project.vercel.app/api/social/meta/callback"
 }
 
@@ -109,6 +108,7 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
       state,
       response_type: "code",
       scope,
+      auth_type: "rerequest",
     })
     return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
   }
