@@ -93,6 +93,7 @@ export default function GeneratePage() {
   const [generatingPosts, setGeneratingPosts] = useState(false)
   const [editingPost, setEditingPost] = useState<PostRow | null>(null)
   const [loadingPosts, setLoadingPosts] = useState(false)
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null)
   const [aiScores, setAiScores] = useState<Record<string, number>>({})
   const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
   const [checkingAll, setCheckingAll] = useState(false)
@@ -255,6 +256,7 @@ export default function GeneratePage() {
       }
       const data = await res.json()
       setPosts(data.posts ?? [])
+      setExpandedPostId(null)
       setAiScores({})
       setCheckingPostIds({})
       toast.success(`${(data.posts as PostRow[]).length} posts generated!`)
@@ -505,11 +507,13 @@ export default function GeneratePage() {
                       className="relative group cursor-pointer transition-colors hover:border-primary/50"
                       role="button"
                       tabIndex={0}
-                      onClick={() => setEditingPost(post)}
+                      onClick={() =>
+                        setExpandedPostId((prev) => (prev === post.id ? null : post.id))
+                      }
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault()
-                          setEditingPost(post)
+                          setExpandedPostId((prev) => (prev === post.id ? null : post.id))
                         }
                       }}
                     >
@@ -578,21 +582,43 @@ export default function GeneratePage() {
                             <img src={post.image_url} alt="Post visual" className="w-full h-full object-cover" />
                           </div>
                         )}
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap line-clamp-8">{post.caption}</p>
+                        <p
+                          className={`text-sm leading-relaxed whitespace-pre-wrap ${
+                            expandedPostId === post.id ? "" : "line-clamp-8"
+                          }`}
+                        >
+                          {post.caption}
+                        </p>
                         {post.hashtags && post.hashtags.length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {post.hashtags.slice(0, 5).map((tag) => (
+                            {(expandedPostId === post.id ? post.hashtags : post.hashtags.slice(0, 5)).map((tag) => (
                               <span key={tag} className="text-xs text-primary">
                                 #{tag}
                               </span>
                             ))}
-                            {post.hashtags.length > 5 && (
+                            {expandedPostId !== post.id && post.hashtags.length > 5 && (
                               <span className="text-xs text-muted-foreground">
                                 +{post.hashtags.length - 5} more
                               </span>
                             )}
                           </div>
                         )}
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-xs text-muted-foreground">
+                            {expandedPostId === post.id ? "Full post" : "Click card to view full post"}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingPost(post)
+                            }}
+                          >
+                            Open Editor
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}

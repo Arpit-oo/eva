@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { GoogleGenAI } from "@google/genai"
 
-const MODEL_ID = "gemini-2.5-flash-image"
+const DEFAULT_MODEL_ID = "gemini-2.5-flash-image"
 
 export async function POST(request: Request) {
   const supabase = await createClient()
@@ -15,14 +15,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not configured" }, { status: 500 })
   }
 
-  const { prompt, post_id } = (await request.json()) as { prompt: string; post_id?: string }
+  const { prompt, post_id, model } = (await request.json()) as {
+    prompt: string
+    post_id?: string
+    model?: string
+  }
   if (!prompt) return NextResponse.json({ error: "prompt is required" }, { status: 400 })
+
+  const selectedModel = model?.trim() || DEFAULT_MODEL_ID
+  if (selectedModel !== DEFAULT_MODEL_ID) {
+    return NextResponse.json({ error: `Unsupported image model: ${selectedModel}` }, { status: 400 })
+  }
 
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY })
 
   try {
     const response = await ai.models.generateContent({
-      model: MODEL_ID,
+      model: selectedModel,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       config: {
         responseModalities: ["Text", "Image"],

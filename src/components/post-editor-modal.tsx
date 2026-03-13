@@ -38,6 +38,9 @@ const BEST_POSTING_TIMES: Record<SocialPlatform, string> = {
   facebook: "Wed–Fri · 1–4 pm (mid-week afternoon engagement spike)",
 }
 
+const IMAGE_MODELS = ["gemini-2.5-flash-image"] as const
+type ImageModelId = (typeof IMAGE_MODELS)[number]
+
 interface Props {
   post: PostRow
   open: boolean
@@ -65,6 +68,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const [analyzing, setAnalyzing] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageFileInputRef = useRef<HTMLInputElement | null>(null)
+  const [imageModel, setImageModel] = useState<ImageModelId>("gemini-2.5-flash-image")
   const [evaluation, setEvaluation] = useState<{
     score: number
     strengths: string[]
@@ -155,7 +159,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
       const res = await fetch("/api/generate/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: imagePrompt, post_id: post.id }),
+        body: JSON.stringify({ prompt: imagePrompt, post_id: post.id, model: imageModel }),
       })
       if (!res.ok) {
         const err = await res.json()
@@ -553,6 +557,21 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
               className="resize-none text-sm"
               placeholder="Describe the visual for this post — used for both image and video generation..."
             />
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Image Model</Label>
+              <Select value={imageModel} onValueChange={(v) => setImageModel(v as ImageModelId)}>
+                <SelectTrigger className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_MODELS.map((modelId) => (
+                    <SelectItem key={modelId} value={modelId}>
+                      {modelId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex flex-wrap gap-2">
               <input
                 ref={imageFileInputRef}
@@ -591,7 +610,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
                 ) : (
                   <ImageIcon className="h-3.5 w-3.5" />
                 )}
-                {generatingImage ? "Generating..." : "Generate Image (Imagen 3)"}
+                {generatingImage ? "Generating..." : `Generate Image (${imageModel})`}
               </Button>
 
               {/* Generate Video dropdown */}
