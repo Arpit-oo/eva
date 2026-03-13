@@ -41,6 +41,10 @@ function parseJsonSafe(text: string) {
   }
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export function getOAuthRedirectUri(platform: SocialPlatform, requestUrl: string) {
   if (platform === "linkedin") {
     return `${getAppBaseUrl(requestUrl)}/api/social/linkedin/callback`
@@ -407,17 +411,25 @@ async function publishToFacebook(post: PostRow, connection: SocialConnectionRow)
 }
 
 async function publishToInstagram(post: PostRow, connection: SocialConnectionRow) {
-  if (!post.image_url) {
-    throw new Error("Instagram publish requires an image_url")
+  if (!post.image_url && !post.video_url) {
+    throw new Error("Instagram publish requires an image_url or video_url")
   }
 
   const caption = `${post.caption}\n\n${(post.hashtags ?? []).map((h) => `#${h}`).join(" ")}`.trim()
+  const isVideoPost = Boolean(post.video_url)
 
   const createParams = new URLSearchParams({
-    image_url: post.image_url,
     caption,
     access_token: connection.access_token,
   })
+
+  if (isVideoPost) {
+    createParams.set("media_type", "REELS")
+    createParams.set("video_url", post.video_url!)
+    createParams.set("share_to_feed", "true")
+  } else {
+    createParams.set("image_url", post.image_url!)
+  }
 
   const createRes = await fetch(`https://graph.facebook.com/v20.0/${connection.platform_user_id}/media`, {
     method: "POST",
@@ -429,6 +441,32 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
   if (!createRes.ok) throw new Error(`Instagram media create failed: ${createRaw}`)
   const createData = parseJsonSafe(createRaw) as { id?: string }
   if (!createData.id) throw new Error("Instagram media create failed: missing container id")
+
+  if (isVideoPost) {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const statusRes = await fetch(
+        `https://graph.facebook.com/v20.0/${createData.id}?fields=status_code,status&access_token=${encodeURIComponent(connection.access_token)}`
+      )
+      const statusRaw = await statusRes.text()
+      if (!statusRes.ok) {
+        throw new Error(`Instagram container status failed: ${statusRaw}`)
+      }
+
+      const statusData = parseJsonSafe(statusRaw) as { status_code?: string; status?: string }
+      const statusCode = statusData.status_code ?? statusData.status ?? ""
+
+      if (statusCode === "FINISHED" || statusCode === "PUBLISHED") break
+      if (statusCode === "ERROR" || statusCode === "EXPIRED") {
+        throw new Error(`Instagram media processing failed: ${statusRaw}`)
+      }
+
+      if (attempt === 9) {
+        throw new Error("Instagram media processing timed out before publish")
+      }
+
+      await wait(3000)
+    }
+  }
 
   const publishParams = new URLSearchParams({
     creation_id: createData.id,

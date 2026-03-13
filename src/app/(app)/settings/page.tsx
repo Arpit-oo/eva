@@ -352,15 +352,18 @@ export default function SettingsPage() {
           {(["linkedin", "twitter", "instagram", "facebook"] as SocialPlatform[]).map((platform) => {
             const connection = getConnection(platform)
             const label = platform === "twitter" ? "X (Twitter)" : platform.charAt(0).toUpperCase() + platform.slice(1)
+            const description = connection
+              ? `Connected as ${connection.platform_username ?? connection.platform_user_id}`
+              : platform === "instagram"
+              ? "Requires an Instagram Business account linked to a Facebook Page"
+              : platform === "facebook"
+              ? "Connect a Facebook Page to publish directly"
+              : "Not connected"
             return (
               <div key={platform} className="flex items-center justify-between rounded-lg border p-3">
                 <div>
                   <p className="font-medium text-sm">{label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {connection
-                      ? `Connected as ${connection.platform_username ?? connection.platform_user_id}`
-                      : "Not connected"}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
                 {connection ? (
                   <Button
