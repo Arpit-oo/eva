@@ -59,6 +59,32 @@ function getMetaRedirectUri() {
   return "https://eva-project.vercel.app/api/social/meta/callback"
 }
 
+function getInstagramAppId() {
+  const value = process.env.INSTAGRAM_APP_ID?.trim() || process.env.META_APP_ID?.trim()
+  if (!value) throw new Error("INSTAGRAM_APP_ID or META_APP_ID is not configured")
+  return value
+}
+
+function getInstagramAppSecret() {
+  const value = process.env.INSTAGRAM_APP_SECRET?.trim() || process.env.META_APP_SECRET?.trim()
+  if (!value) throw new Error("INSTAGRAM_APP_SECRET or META_APP_SECRET is not configured")
+  return value
+}
+
+function buildInstagramEmbedUrl(state: string) {
+  const raw = process.env.INSTAGRAM_EMBED_URL?.trim()
+  if (!raw) return null
+  try {
+    const url = new URL(raw)
+    if (!url.searchParams.get("state")) {
+      url.searchParams.set("state", state)
+    }
+    return url.toString()
+  } catch {
+    throw new Error("INSTAGRAM_EMBED_URL is invalid")
+  }
+}
+
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -106,7 +132,10 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
   }
 
   if (platform === "instagram") {
-    const clientId = assertEnv("META_APP_ID")
+    const embedUrl = buildInstagramEmbedUrl(state)
+    if (embedUrl) return embedUrl
+
+    const clientId = getInstagramAppId()
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -216,8 +245,8 @@ async function exchangeMetaCode(code: string, redirectUri: string): Promise<OAut
 }
 
 async function exchangeInstagramCode(code: string, redirectUri: string): Promise<InstagramLoginTokenResult> {
-  const clientId = assertEnv("META_APP_ID")
-  const clientSecret = assertEnv("META_APP_SECRET")
+  const clientId = getInstagramAppId()
+  const clientSecret = getInstagramAppSecret()
 
   const res = await fetch("https://api.instagram.com/oauth/access_token", {
     method: "POST",
@@ -258,7 +287,7 @@ async function exchangeInstagramCode(code: string, redirectUri: string): Promise
 }
 
 async function exchangeInstagramLongLivedToken(shortLivedToken: string) {
-  const clientSecret = assertEnv("META_APP_SECRET")
+  const clientSecret = getInstagramAppSecret()
   const params = new URLSearchParams({
     grant_type: "ig_exchange_token",
     client_secret: clientSecret,
