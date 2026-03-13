@@ -68,6 +68,18 @@ export async function POST(request: Request) {
   } catch (err: unknown) {
     console.error("Image generation failed:", err)
     const message = err instanceof Error ? err.message : "Image generation failed"
+    const quotaHit = /RESOURCE_EXHAUSTED|quota|rate.?limit|CreditsDepleted/i.test(message)
+    if (quotaHit) {
+      return NextResponse.json(
+        {
+          error:
+            "Image generation quota exceeded for Gemini. Please add billing/credits to GOOGLE_AI_API_KEY project or wait for quota reset, then retry.",
+          model: selectedModel,
+        },
+        { status: 429 }
+      )
+    }
+
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

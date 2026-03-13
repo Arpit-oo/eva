@@ -50,7 +50,6 @@ export default function LibraryPage() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [aiScores, setAiScores] = useState<Record<string, number>>({})
   const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
-  const [checkingAll, setCheckingAll] = useState(false)
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
@@ -124,20 +123,6 @@ export default function LibraryPage() {
     return true
   })
 
-  const runAiCheckForAll = useCallback(async () => {
-    if (filtered.length === 0) return
-    setCheckingAll(true)
-    try {
-      for (const post of filtered) {
-        // eslint-disable-next-line no-await-in-loop
-        await runAiCheckForPost(post)
-      }
-      toast.success("AI checker complete")
-    } finally {
-      setCheckingAll(false)
-    }
-  }, [filtered, runAiCheckForPost])
-
   const platforms = Array.from(new Set(posts.map((p) => p.platform)))
 
   return (
@@ -200,16 +185,6 @@ export default function LibraryPage() {
         <span className="text-xs text-muted-foreground ml-auto">
           {filtered.length} post{filtered.length !== 1 ? "s" : ""}
         </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={runAiCheckForAll}
-          disabled={checkingAll || filtered.length === 0}
-          className="gap-1.5"
-        >
-          {checkingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-          {checkingAll ? "Checking..." : "Run AI Checker"}
-        </Button>
       </div>
 
       {/* Posts grid */}
@@ -290,7 +265,7 @@ export default function LibraryPage() {
                       e.stopPropagation()
                       void runAiCheckForPost(post)
                     }}
-                    disabled={!!checkingPostIds[post.id] || checkingAll}
+                    disabled={!!checkingPostIds[post.id]}
                   >
                     {checkingPostIds[post.id] ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />

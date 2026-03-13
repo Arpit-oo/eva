@@ -96,7 +96,6 @@ export default function GeneratePage() {
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null)
   const [aiScores, setAiScores] = useState<Record<string, number>>({})
   const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
-  const [checkingAll, setCheckingAll] = useState(false)
 
   useEffect(() => {
     loadInit()
@@ -182,21 +181,6 @@ export default function GeneratePage() {
       return null
     } finally {
       setCheckingPostIds((prev) => ({ ...prev, [post.id]: false }))
-    }
-  }
-
-  async function runAiCheckForAllPosts() {
-    if (posts.length === 0) return
-    setCheckingAll(true)
-    try {
-      for (const post of posts) {
-        // Sequential calls reduce OpenAI rate-limit spikes for large weekly batches.
-        // eslint-disable-next-line no-await-in-loop
-        await runAiCheckForPost(post)
-      }
-      toast.success("AI content check complete")
-    } finally {
-      setCheckingAll(false)
     }
   }
 
@@ -478,21 +462,9 @@ export default function GeneratePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">Generated Posts</h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    {posts.length} post{posts.length !== 1 ? "s" : ""}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={runAiCheckForAllPosts}
-                    disabled={checkingAll || posts.length === 0}
-                    className="gap-1.5"
-                  >
-                    {checkingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                    {checkingAll ? "Checking..." : "Run AI Checker"}
-                  </Button>
-                </div>
+                <span className="text-sm text-muted-foreground">
+                  {posts.length} post{posts.length !== 1 ? "s" : ""}
+                </span>
               </div>
 
               {loadingPosts ? (
@@ -563,7 +535,7 @@ export default function GeneratePage() {
                                 e.stopPropagation()
                                 void runAiCheckForPost(post)
                               }}
-                              disabled={!!checkingPostIds[post.id] || checkingAll}
+                              disabled={!!checkingPostIds[post.id]}
                             >
                               {checkingPostIds[post.id] ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
