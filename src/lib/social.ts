@@ -45,6 +45,9 @@ export function getOAuthRedirectUri(platform: SocialPlatform, requestUrl: string
   if (platform === "linkedin") {
     return `${getAppBaseUrl(requestUrl)}/api/social/linkedin/callback`
   }
+  if (platform === "twitter") {
+    return `${getAppBaseUrl(requestUrl)}/api/social/x/callback`
+  }
   return `${getAppBaseUrl(requestUrl)}/api/social/callback/${platform}`
 }
 
