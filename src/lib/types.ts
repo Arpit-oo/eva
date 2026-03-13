@@ -90,6 +90,7 @@ export type SocialConnectionRow = {
   user_id: string
   platform: SocialPlatform
   platform_user_id: string
+  meta_page_id: string | null
   platform_username: string | null
   access_token: string
   refresh_token: string | null

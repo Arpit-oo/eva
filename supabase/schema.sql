@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS public."SocialConnections" (
   user_id uuid NOT NULL REFERENCES public."Users"(id) ON DELETE CASCADE,
   platform text NOT NULL CHECK (platform IN ('linkedin', 'twitter', 'instagram', 'facebook')),
   platform_user_id text NOT NULL,
+  meta_page_id text,
   platform_username text,
   access_token text NOT NULL,
   refresh_token text,

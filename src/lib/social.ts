@@ -7,6 +7,12 @@ type OAuthTokenResult = {
   expiresIn?: number | null
 }
 
+type MetaPage = {
+  id: string
+  name: string
+  access_token: string
+}
+
 export function getAppBaseUrl(requestUrl?: string) {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.trim().replace(/\/$/, "")
   if (requestUrl) return new URL(requestUrl).origin
@@ -95,10 +101,7 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
 
   if (platform === "facebook" || platform === "instagram") {
     const appId = assertEnv("META_APP_ID")
-    const scope =
-      platform === "instagram"
-        ? "instagram_business_basic,instagram_manage_comments,instagram_business_manage_messages"
-        : "pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management"
+    const scope = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
@@ -182,7 +185,7 @@ async function exchangeMetaCode(code: string, redirectUri: string): Promise<OAut
     code,
   })
 
-  const res = await fetch(`https://graph.facebook.com/v20.0/oauth/access_token?${params.toString()}`)
+  const res = await fetch(`https://graph.facebook.com/v19.0/oauth/access_token?${params.toString()}`)
   const text = await res.text()
   if (!res.ok) throw new Error(`Meta token exchange failed: ${text}`)
   const json = parseJsonSafe(text) as { access_token: string; expires_in?: number }
@@ -221,22 +224,36 @@ async function getTwitterIdentity(accessToken: string) {
   }
 }
 
-async function getMetaPages(accessToken: string) {
+async function getMetaPages(accessToken: string): Promise<MetaPage[]> {
   const res = await fetch(
-    `https://graph.facebook.com/v20.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`
+    `https://graph.facebook.com/v19.0/me/accounts?access_token=${encodeURIComponent(accessToken)}`
   )
   const text = await res.text()
   if (!res.ok) throw new Error(`Meta pages fetch failed: ${text}`)
   const data = parseJsonSafe(text) as {
-    data?: Array<{
-      id: string
-      name: string
-      access_token: string
-      instagram_business_account?: { id: string }
-    }>
+    data?: MetaPage[]
   }
   if (!data.data || data.data.length === 0) throw new Error("No Facebook pages found for this account")
   return data.data
+}
+
+async function getMetaInstagramBusinessAccount(pageId: string, accessToken: string) {
+  const res = await fetch(
+    `https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(accessToken)}`
+  )
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Meta page lookup failed: ${text}`)
+  const data = parseJsonSafe(text) as { instagram_business_account?: { id?: string } }
+  return data.instagram_business_account?.id ?? null
+}
+
+async function getInstagramProfile(igId: string, accessToken: string) {
+  const res = await fetch(
+    `https://graph.facebook.com/v19.0/${igId}?fields=username&access_token=${encodeURIComponent(accessToken)}`
+  )
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Instagram profile fetch failed: ${text}`)
+  return parseJsonSafe(text) as { username?: string }
 }
 
 export async function upsertSocialConnection(params: {
@@ -247,6 +264,7 @@ export async function upsertSocialConnection(params: {
   accessToken: string
   refreshToken?: string | null
   expiresIn?: number | null
+  metaPageId?: string | null
 }) {
   const supabase = createAdminSupabase()
   const expiresAt = params.expiresIn
@@ -264,6 +282,7 @@ export async function upsertSocialConnection(params: {
         access_token: params.accessToken,
         refresh_token: params.refreshToken ?? null,
         token_expires_at: expiresAt,
+        meta_page_id: params.metaPageId ?? null,
         status: "active",
       },
       { onConflict: "user_id,platform" }
@@ -325,31 +344,37 @@ export async function handleOAuthCallback(args: {
         accessToken: page.access_token,
         refreshToken: null,
         expiresIn: tokens.expiresIn,
+        metaPageId: page.id,
       })
       return
     }
 
-    const pageWithIg = pages.find((p) => p.instagram_business_account?.id)
-    if (!pageWithIg?.instagram_business_account?.id) {
+    let matchedPage: MetaPage | null = null
+    let igId: string | null = null
+    for (const page of pages) {
+      const maybeIgId = await getMetaInstagramBusinessAccount(page.id, page.access_token)
+      if (maybeIgId) {
+        matchedPage = page
+        igId = maybeIgId
+        break
+      }
+    }
+
+    if (!matchedPage || !igId) {
       throw new Error("No Instagram Business account linked to your Facebook pages")
     }
 
-    const igId = pageWithIg.instagram_business_account.id
-    const igRes = await fetch(
-      `https://graph.facebook.com/v20.0/${igId}?fields=username&access_token=${encodeURIComponent(pageWithIg.access_token)}`
-    )
-    const igText = await igRes.text()
-    if (!igRes.ok) throw new Error(`Instagram profile fetch failed: ${igText}`)
-    const igData = parseJsonSafe(igText) as { username?: string }
+    const igData = await getInstagramProfile(igId, matchedPage.access_token)
 
     await upsertSocialConnection({
       userId: args.userId,
       platform: "instagram",
       platformUserId: igId,
       platformUsername: igData.username ?? null,
-      accessToken: pageWithIg.access_token,
+      accessToken: matchedPage.access_token,
       refreshToken: null,
       expiresIn: tokens.expiresIn,
+      metaPageId: matchedPage.id,
     })
     return
   }
@@ -411,7 +436,7 @@ async function publishToFacebook(post: PostRow, connection: SocialConnectionRow)
     message,
     access_token: connection.access_token,
   })
-  const res = await fetch(`https://graph.facebook.com/v20.0/${connection.platform_user_id}/feed`, {
+  const res = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/feed`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
@@ -445,7 +470,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
     createParams.set("image_url", post.image_url!)
   }
 
-  const createRes = await fetch(`https://graph.facebook.com/v20.0/${connection.platform_user_id}/media`, {
+  const createRes = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: createParams.toString(),
@@ -459,7 +484,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
   if (isVideoPost) {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const statusRes = await fetch(
-        `https://graph.facebook.com/v20.0/${createData.id}?fields=status_code,status&access_token=${encodeURIComponent(connection.access_token)}`
+        `https://graph.facebook.com/v19.0/${createData.id}?fields=status_code,status&access_token=${encodeURIComponent(connection.access_token)}`
       )
       const statusRaw = await statusRes.text()
       if (!statusRes.ok) {
@@ -486,7 +511,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
     creation_id: createData.id,
     access_token: connection.access_token,
   })
-  const publishRes = await fetch(`https://graph.facebook.com/v20.0/${connection.platform_user_id}/media_publish`, {
+  const publishRes = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: publishParams.toString(),
