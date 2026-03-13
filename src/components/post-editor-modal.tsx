@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -26,7 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Loader2, Trash2, ImageIcon, Video, BookmarkPlus, ChevronDown, Play, Sparkles, CalendarClock } from "lucide-react"
+import { Loader2, Trash2, ImageIcon, Upload, Video, BookmarkPlus, ChevronDown, Play, Sparkles, CalendarClock } from "lucide-react"
 import type { PostRow, SocialPlatform } from "@/lib/types"
 
 const PLATFORMS: SocialPlatform[] = ["linkedin", "twitter", "instagram", "facebook"]
@@ -63,6 +63,8 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const [publishingNow, setPublishingNow] = useState(false)
   const [scheduling, setScheduling] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const imageFileInputRef = useRef<HTMLInputElement | null>(null)
   const [evaluation, setEvaluation] = useState<{
     score: number
     strengths: string[]
@@ -193,6 +195,32 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
       toast.error(err instanceof Error ? err.message : "Video generation failed")
     } finally {
       setGeneratingVideo(false)
+    }
+  }
+
+  async function handleUploadImage(file: File) {
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const res = await fetch(`/api/posts/${post.id}/image-upload`, {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "Image upload failed")
+      }
+
+      const data = await res.json()
+      setImageUrl(data.image_url)
+      toast.success("Image uploaded")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed")
+    } finally {
+      setUploadingImage(false)
     }
   }
 
@@ -341,7 +369,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const charCount = caption.length
   const charLimit = platform === "twitter" ? 280 : platform === "linkedin" ? 3000 : 2200
   const overLimit = charCount > charLimit
-  const anyGenerating = generatingImage || !!generatingVideo || analyzing
+  const anyGenerating = generatingImage || !!generatingVideo || analyzing || uploadingImage
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -526,6 +554,30 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
               placeholder="Describe the visual for this post — used for both image and video generation..."
             />
             <div className="flex flex-wrap gap-2">
+              <input
+                ref={imageFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  void handleUploadImage(file)
+                  e.currentTarget.value = ""
+                }}
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => imageFileInputRef.current?.click()}
+                disabled={anyGenerating}
+                className="gap-1.5"
+              >
+                {uploadingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {uploadingImage ? "Uploading..." : "Upload Image"}
+              </Button>
+
               {/* Generate Image */}
               <Button
                 variant="outline"
