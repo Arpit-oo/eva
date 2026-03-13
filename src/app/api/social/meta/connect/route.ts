@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
-import { getOAuthAuthorizeUrl } from "@/lib/social"
 import type { SocialPlatform } from "@/lib/types"
+
+const META_REDIRECT_URI = "https://eva-project.vercel.app/api/social/meta/callback"
+const META_SCOPE =
+  "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
 
 function getPlatform(value: string | null): SocialPlatform {
   if (value === "facebook") return "facebook"
@@ -11,10 +14,24 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url)
     const platform = getPlatform(url.searchParams.get("platform"))
-    const state = `${platform}:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`
-    const authorizeUrl = getOAuthAuthorizeUrl(platform, request.url, state)
+    const clientId = process.env.META_APP_ID?.trim()
+    if (!clientId) {
+      throw new Error("META_APP_ID is not configured")
+    }
 
-    console.log(`[social][meta] redirect_uri=https://eva-project.vercel.app/api/social/meta/callback`)
+    const state = `${platform}:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: META_REDIRECT_URI,
+      response_type: "code",
+      scope: META_SCOPE,
+      auth_type: "rerequest",
+      state,
+    })
+    const authorizeUrl = `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
+
+    console.log(`[social][meta] redirect_uri=${META_REDIRECT_URI}`)
+    console.log(`[social][meta] scope=${META_SCOPE}`)
     console.log(`[social][meta] oauth_url=${authorizeUrl}`)
 
     return NextResponse.redirect(authorizeUrl)
