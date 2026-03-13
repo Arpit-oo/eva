@@ -344,13 +344,11 @@ Write one post per platform.`,
 
 // ─── Main webhook handler ─────────────────────────────────────────────────────
 
-export async function POST(request: Request) {
-  // Verify webhook secret
-  const secret = request.headers.get("x-telegram-bot-api-secret-token")
-  if (process.env.TELEGRAM_WEBHOOK_SECRET && secret !== process.env.TELEGRAM_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
+export async function GET() {
+  return NextResponse.json({ ok: true, service: "telegram-webhook", method: "POST" })
+}
 
+export async function POST(request: Request) {
   let body: {
     message?: {
       message_id: number

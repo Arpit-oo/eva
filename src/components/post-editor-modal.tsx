@@ -26,10 +26,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Loader2, Trash2, ImageIcon, Video, BookmarkPlus, ChevronDown, Play, Sparkles } from "lucide-react"
+import { Loader2, Trash2, ImageIcon, Video, BookmarkPlus, ChevronDown, Play, Sparkles, CalendarClock } from "lucide-react"
 import type { PostRow, SocialPlatform } from "@/lib/types"
 
 const PLATFORMS: SocialPlatform[] = ["linkedin", "twitter", "instagram", "facebook"]
+
+const BEST_POSTING_TIMES: Record<SocialPlatform, string> = {
+  linkedin: "Tue–Thu · 8–10 am or 12 pm (professional audience peaks mid-morning)",
+  twitter: "Mon–Fri · 8–10 am, 12–1 pm, or 5–6 pm (commute + lunch windows)",
+  instagram: "Mon–Fri · 11 am–1 pm or 7–9 pm (peak scroll time)",
+  facebook: "Wed–Fri · 1–4 pm (mid-week afternoon engagement spike)",
+}
 
 interface Props {
   post: PostRow
@@ -53,6 +60,8 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const [generatingImage, setGeneratingImage] = useState(false)
   const [generatingVideo, setGeneratingVideo] = useState<false | "fal" | "veo2">(false)
   const [savingTemplate, setSavingTemplate] = useState(false)
+  const [publishingNow, setPublishingNow] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [evaluation, setEvaluation] = useState<{
     score: number
@@ -239,6 +248,96 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
     }
   }
 
+  async function handleSchedule() {
+    if (!scheduledDate || !scheduledTime) {
+      toast.error("Set both a date and time before scheduling")
+      return
+    }
+    setScheduling(true)
+    try {
+      const hashtags = hashtagsStr
+        .split(",")
+        .map((h) => h.trim().replace(/^#/, ""))
+        .filter(Boolean)
+
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption,
+          hashtags,
+          platform,
+          scheduled_date: scheduledDate,
+          scheduled_time: scheduledTime,
+          image_prompt: imagePrompt || null,
+          image_url: imageUrl || null,
+          video_url: videoUrl || null,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "Failed to schedule post")
+      }
+
+      const data = await res.json()
+      onSaved(data.post as PostRow)
+      toast.success(`Post scheduled for ${scheduledDate} at ${scheduledTime}`)
+      onOpenChange(false)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Scheduling failed")
+    } finally {
+      setScheduling(false)
+    }
+  }
+
+  async function handlePublishNow() {
+    setPublishingNow(true)
+    try {
+      // Persist current edits before publish.
+      const hashtags = hashtagsStr
+        .split(",")
+        .map((h) => h.trim().replace(/^#/, ""))
+        .filter(Boolean)
+
+      const saveRes = await fetch(`/api/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption,
+          hashtags,
+          platform,
+          scheduled_date: null,
+          scheduled_time: null,
+          image_prompt: imagePrompt || null,
+          image_url: imageUrl || null,
+          video_url: videoUrl || null,
+        }),
+      })
+
+      if (!saveRes.ok) {
+        const err = await saveRes.json()
+        throw new Error(err.error ?? "Failed to save before publish")
+      }
+
+      const pubRes = await fetch(`/api/posts/${post.id}/publish`, { method: "POST" })
+      const payload = await pubRes.json()
+
+      if (!pubRes.ok) {
+        onSaved(payload.post as PostRow)
+        throw new Error(payload.error ?? "Publish failed")
+      }
+
+      onSaved(payload.post as PostRow)
+      toast.success("Post published successfully")
+      onOpenChange(false)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Publish failed")
+    } finally {
+      setPublishingNow(false)
+    }
+  }
+
   const charCount = caption.length
   const charLimit = platform === "twitter" ? 280 : platform === "linkedin" ? 3000 : 2200
   const overLimit = charCount > charLimit
@@ -385,16 +484,36 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
           </div>
 
           {/* Schedule */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Scheduled Date</Label>
-              <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+          <div className="space-y-2">
+            <Label>Schedule</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <Input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Time</Label>
+                <Input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Scheduled Time</Label>
-              <Input type="time" value={scheduledTime} onChange={(e) => setScheduledTime(e.target.value)} />
-            </div>
+            <p className="text-xs text-muted-foreground flex gap-1">
+              <span className="shrink-0">💡</span>
+              <span><span className="font-medium">Best time for {platform === "twitter" ? "Twitter / X" : platform.charAt(0).toUpperCase() + platform.slice(1)}:</span> {BEST_POSTING_TIMES[platform]}</span>
+            </p>
           </div>
+
+          {(post.platform_post_id || post.publish_error || post.status === "published") && (
+            <div className="rounded-md border bg-muted/40 p-3 space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Publishing Status</p>
+              <p className="text-xs capitalize">Status: <span className="font-medium">{post.status}</span></p>
+              {post.platform_post_id && (
+                <p className="text-xs break-all">Platform Post ID: {post.platform_post_id}</p>
+              )}
+              {post.publish_error && (
+                <p className="text-xs text-destructive break-words">Error: {post.publish_error}</p>
+              )}
+            </div>
+          )}
 
           {/* Visual Prompt + Media Generation */}
           <div className="space-y-2">
@@ -512,6 +631,14 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancel
+            </Button>
+            <Button variant="outline" onClick={handleSchedule} disabled={scheduling || saving || publishingNow || overLimit || !scheduledDate || !scheduledTime} className="gap-1.5">
+              {scheduling ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
+              {scheduling ? "Scheduling..." : "Schedule Post"}
+            </Button>
+            <Button variant="secondary" onClick={handlePublishNow} disabled={publishingNow || saving || scheduling || overLimit}>
+              {publishingNow && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Publish Now
             </Button>
             <Button onClick={handleSave} disabled={saving || overLimit}>
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

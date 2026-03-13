@@ -25,6 +25,30 @@ export async function PATCH(
   if (image_url !== undefined) updates.image_url = image_url
   if (video_url !== undefined) updates.video_url = video_url
 
+  // Auto-mark as scheduled when both schedule fields are present unless caller forced status
+  if (status === undefined && (scheduled_date !== undefined || scheduled_time !== undefined)) {
+    if ((scheduled_date ?? null) && (scheduled_time ?? null)) {
+      updates.status = "scheduled"
+    } else {
+      updates.status = "draft"
+    }
+  }
+
+  // Any manual edit to post payload should clear previous publish metadata
+  if (
+    caption !== undefined ||
+    hashtags !== undefined ||
+    image_prompt !== undefined ||
+    image_url !== undefined ||
+    video_url !== undefined ||
+    platform !== undefined
+  ) {
+    updates.platform_post_id = null
+    updates.publish_error = null
+    updates.published_at = null
+    if (updates.status === undefined) updates.status = "draft"
+  }
+
   const { data: post, error } = await supabase
     .from("Posts")
     .update(updates)

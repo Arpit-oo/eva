@@ -227,6 +227,18 @@ export default function LibraryPage() {
                   </p>
                 )}
 
+                {post.platform_post_id && (
+                  <p className="text-xs text-muted-foreground truncate">
+                    Platform ID: {post.platform_post_id}
+                  </p>
+                )}
+
+                {post.publish_error && (
+                  <p className="text-xs text-destructive line-clamp-2">
+                    Publish error: {post.publish_error}
+                  </p>
+                )}
+
                 {/* Edit button */}
                 <Button
                   variant="outline"

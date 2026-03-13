@@ -30,6 +30,7 @@ export default function DashboardPage() {
     totalIdeas: 0,
   })
   const [recentPosts, setRecentPosts] = useState<PostRow[]>([])
+  const [loadingData, setLoadingData] = useState(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -38,31 +39,38 @@ export default function DashboardPage() {
   }, [])
 
   async function loadData() {
-    const [ideasRes, postsRes] = await Promise.all([
-      fetch("/api/ideas"),
-      supabase
-        .from("Posts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(5),
-    ])
+    setLoadingData(true)
+    try {
+      const [ideasRes, postsRes] = await Promise.all([
+        fetch("/api/ideas"),
+        supabase
+          .from("Posts")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ])
 
-    if (ideasRes.ok) {
-      const data = await ideasRes.json()
-      const list: IdeaRow[] = data.ideas ?? []
-      setIdeas(list)
-      setStats((s) => ({ ...s, totalIdeas: list.length }))
-    }
+      if (ideasRes.ok) {
+        const data = await ideasRes.json()
+        const list: IdeaRow[] = data.ideas ?? []
+        setIdeas(list)
+        setStats((s) => ({ ...s, totalIdeas: list.length }))
+      }
 
-    if (!postsRes.error && postsRes.data) {
-      const allPosts = postsRes.data as PostRow[]
-      setRecentPosts(allPosts)
-      setStats((s) => ({
-        ...s,
-        scheduled: allPosts.filter((p) => p.status === "scheduled").length,
-        published: allPosts.filter((p) => p.status === "published").length,
-        drafts: allPosts.filter((p) => p.status === "draft").length,
-      }))
+      if (!postsRes.error && postsRes.data) {
+        const allPosts = postsRes.data as PostRow[]
+        setRecentPosts(allPosts)
+        setStats((s) => ({
+          ...s,
+          scheduled: allPosts.filter((p) => p.status === "scheduled").length,
+          published: allPosts.filter((p) => p.status === "published").length,
+          drafts: allPosts.filter((p) => p.status === "draft").length,
+        }))
+      }
+    } catch {
+      toast.error("Failed to load dashboard data")
+    } finally {
+      setLoadingData(false)
     }
   }
 
@@ -90,14 +98,20 @@ export default function DashboardPage() {
   }
 
   async function handleDeleteIdea(id: string) {
-    await fetch("/api/ideas", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    })
-    setIdeas((prev) => prev.filter((i) => i.id !== id))
-    setStats((s) => ({ ...s, totalIdeas: Math.max(0, s.totalIdeas - 1) }))
-    toast.success("Idea deleted")
+    if (!confirm("Delete this idea?")) return
+    try {
+      const res = await fetch("/api/ideas", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+      if (!res.ok) throw new Error("Delete failed")
+      setIdeas((prev) => prev.filter((i) => i.id !== id))
+      setStats((s) => ({ ...s, totalIdeas: Math.max(0, s.totalIdeas - 1) }))
+      toast.success("Idea deleted")
+    } catch {
+      toast.error("Failed to delete idea")
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -220,7 +234,12 @@ export default function DashboardPage() {
             </Button>
 
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {ideas.length === 0 && (
+              {loadingData && (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              )}
+              {!loadingData && ideas.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No ideas yet — capture your first one!
                 </p>
@@ -252,7 +271,11 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {recentPosts.length === 0 ? (
+            {loadingData ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : recentPosts.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No posts yet. Head to{" "}
                 <a href="/generate" className="text-primary hover:underline">

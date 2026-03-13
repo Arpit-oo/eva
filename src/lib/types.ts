@@ -60,6 +60,8 @@ export type PostRow = {
   image_url: string | null
   video_url: string | null
   platform_post_id: string | null
+  publish_error: string | null
+  published_at: string | null
   scheduled_date: string | null
   scheduled_time: string | null
   status: PostStatus

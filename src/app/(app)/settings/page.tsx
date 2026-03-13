@@ -22,9 +22,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Plus, Pencil, Trash2, Copy, Loader2, Star } from "lucide-react"
+import { Plus, Pencil, Trash2, Copy, Loader2, Star, Link2, Unlink2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import type { BrandProfileRow } from "@/lib/types"
+import type { BrandProfileRow, SocialConnectionRow, SocialPlatform } from "@/lib/types"
 
 const TONES = [
   "Professional",
@@ -63,6 +63,7 @@ const empty: ProfileFormData = {
 export default function SettingsPage() {
   const supabase = createClient()
   const [profiles, setProfiles] = useState<BrandProfileRow[]>([])
+  const [socialConnections, setSocialConnections] = useState<SocialConnectionRow[]>([])
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
   const [telegramToken, setTelegramToken] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -71,17 +72,34 @@ export default function SettingsPage() {
   const [keywordInput, setKeywordInput] = useState("")
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [connectingPlatform, setConnectingPlatform] = useState<SocialPlatform | null>(null)
+  const [disconnectingPlatform, setDisconnectingPlatform] = useState<SocialPlatform | null>(null)
 
   useEffect(() => {
     loadData()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connected = params.get("social_connected")
+    const socialError = params.get("social_error")
+    if (connected) {
+      toast.success(`${connected} account connected`)
+      window.history.replaceState({}, "", window.location.pathname)
+    }
+    if (socialError) {
+      toast.error(decodeURIComponent(socialError))
+      window.history.replaceState({}, "", window.location.pathname)
+    }
+  }, [])
+
   async function loadData() {
     setLoading(true)
-    const [profilesRes, userRes] = await Promise.all([
+    const [profilesRes, userRes, socialRes] = await Promise.all([
       fetch("/api/brand-profiles"),
       supabase.from("Users").select("active_brand_profile_id, telegram_link_token").single(),
+      fetch("/api/social/connections"),
     ])
     if (profilesRes.ok) {
       const data = await profilesRes.json()
@@ -91,7 +109,37 @@ export default function SettingsPage() {
       setActiveProfileId(userRes.data.active_brand_profile_id)
       setTelegramToken(userRes.data.telegram_link_token)
     }
+    if (socialRes.ok) {
+      const data = await socialRes.json()
+      setSocialConnections((data.connections ?? []) as SocialConnectionRow[])
+    }
     setLoading(false)
+  }
+
+  async function connectPlatform(platform: SocialPlatform) {
+    setConnectingPlatform(platform)
+    window.location.href = `/api/social/connect/${platform}`
+  }
+
+  async function disconnectPlatform(platform: SocialPlatform) {
+    setDisconnectingPlatform(platform)
+    try {
+      const res = await fetch(`/api/social/connections/${platform}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "Disconnect failed")
+      }
+      setSocialConnections((prev) => prev.filter((c) => c.platform !== platform))
+      toast.success(`${platform} disconnected`)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Disconnect failed")
+    } finally {
+      setDisconnectingPlatform(null)
+    }
+  }
+
+  function getConnection(platform: SocialPlatform) {
+    return socialConnections.find((c) => c.platform === platform)
   }
 
   function openCreate() {
@@ -289,6 +337,64 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Social Integrations */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Social Integrations</CardTitle>
+          <CardDescription>
+            Connect social accounts to publish immediately or schedule auto-publishing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {(["linkedin", "twitter", "instagram", "facebook"] as SocialPlatform[]).map((platform) => {
+            const connection = getConnection(platform)
+            const label = platform === "twitter" ? "X (Twitter)" : platform.charAt(0).toUpperCase() + platform.slice(1)
+            return (
+              <div key={platform} className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <p className="font-medium text-sm">{label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {connection
+                      ? `Connected as ${connection.platform_username ?? connection.platform_user_id}`
+                      : "Not connected"}
+                  </p>
+                </div>
+                {connection ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => disconnectPlatform(platform)}
+                    disabled={disconnectingPlatform === platform}
+                    className="gap-1.5"
+                  >
+                    {disconnectingPlatform === platform ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Unlink2 className="h-3.5 w-3.5" />
+                    )}
+                    Disconnect
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => connectPlatform(platform)}
+                    disabled={!!connectingPlatform}
+                    className="gap-1.5"
+                  >
+                    {connectingPlatform === platform ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Link2 className="h-3.5 w-3.5" />
+                    )}
+                    Connect
+                  </Button>
+                )}
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
 
