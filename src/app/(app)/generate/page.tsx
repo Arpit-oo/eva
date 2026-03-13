@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 import { PostEditorModal } from "@/components/post-editor-modal"
 import type { BrandProfileRow, StrategyRow, PostRow } from "@/lib/types"
+import { generateAndAttachPostImage } from "@/lib/puter-image"
 
 const EMOTION_COLORS: Record<string, string> = {
   Inspired: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
@@ -96,6 +97,8 @@ export default function GeneratePage() {
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null)
   const [aiScores, setAiScores] = useState<Record<string, number>>({})
   const [checkingPostIds, setCheckingPostIds] = useState<Record<string, boolean>>({})
+  const [generatingImageIds, setGeneratingImageIds] = useState<Record<string, boolean>>({})
+  const [autoGeneratingImages, setAutoGeneratingImages] = useState(false)
 
   useEffect(() => {
     loadInit()
@@ -147,6 +150,7 @@ export default function GeneratePage() {
         setPosts(data.posts ?? [])
         setAiScores({})
         setCheckingPostIds({})
+        setGeneratingImageIds({})
       }
     } finally {
       setLoadingPosts(false)
@@ -181,6 +185,41 @@ export default function GeneratePage() {
       return null
     } finally {
       setCheckingPostIds((prev) => ({ ...prev, [post.id]: false }))
+    }
+  }
+
+  async function generateImagesForPosts(generatedPosts: PostRow[]) {
+    if (generatedPosts.length === 0) return
+
+    setAutoGeneratingImages(true)
+    let successCount = 0
+    let failedCount = 0
+
+    for (const post of generatedPosts) {
+      setGeneratingImageIds((prev) => ({ ...prev, [post.id]: true }))
+      try {
+        const image_url = await generateAndAttachPostImage({
+          id: post.id,
+          caption: post.caption,
+          image_prompt: post.image_prompt,
+        })
+
+        successCount += 1
+        setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, image_url } : p)))
+      } catch {
+        failedCount += 1
+      } finally {
+        setGeneratingImageIds((prev) => ({ ...prev, [post.id]: false }))
+      }
+    }
+
+    setAutoGeneratingImages(false)
+
+    if (successCount > 0) {
+      toast.success(`Generated ${successCount} image${successCount === 1 ? "" : "s"} with Puter`)
+    }
+    if (failedCount > 0) {
+      toast.error(`${failedCount} post${failedCount === 1 ? "" : "s"} kept as text-only (image generation failed)`)
     }
   }
 
@@ -239,11 +278,14 @@ export default function GeneratePage() {
         throw new Error(err.error ?? "Post generation failed")
       }
       const data = await res.json()
-      setPosts(data.posts ?? [])
+      const generatedPosts = (data.posts ?? []) as PostRow[]
+      setPosts(generatedPosts)
       setExpandedPostId(null)
       setAiScores({})
       setCheckingPostIds({})
-      toast.success(`${(data.posts as PostRow[]).length} posts generated!`)
+      setGeneratingImageIds({})
+      toast.success(`${generatedPosts.length} posts generated!`)
+      void generateImagesForPosts(generatedPosts)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Post generation failed")
     } finally {
@@ -462,9 +504,17 @@ export default function GeneratePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">Generated Posts</h2>
-                <span className="text-sm text-muted-foreground">
-                  {posts.length} post{posts.length !== 1 ? "s" : ""}
-                </span>
+                <div className="flex items-center gap-3">
+                  {autoGeneratingImages && (
+                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Generating images with Puter...
+                    </span>
+                  )}
+                  <span className="text-sm text-muted-foreground">
+                    {posts.length} post{posts.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
               </div>
 
               {loadingPosts ? (
@@ -548,10 +598,17 @@ export default function GeneratePage() {
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-3 pb-5">
-                        {post.image_url && (
+                        {(post.image_url || generatingImageIds[post.id]) && (
                           <div className="relative w-full h-52 rounded-md overflow-hidden border bg-muted">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={post.image_url} alt="Post visual" className="w-full h-full object-cover" />
+                            {generatingImageIds[post.id] ? (
+                              <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Generating image...
+                              </div>
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={post.image_url ?? ""} alt="Post visual" className="w-full h-full object-cover" />
+                            )}
                           </div>
                         )}
                         <p

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Loader2, Trash2, ImageIcon, Upload, Video, BookmarkPlus, ChevronDown, Play, Sparkles, CalendarClock } from "lucide-react"
 import type { PostRow, SocialPlatform } from "@/lib/types"
+import { generateAndAttachPostImage } from "@/lib/puter-image"
 
 const PLATFORMS: SocialPlatform[] = ["linkedin", "twitter", "instagram", "facebook"]
 
@@ -37,9 +38,6 @@ const BEST_POSTING_TIMES: Record<SocialPlatform, string> = {
   instagram: "Mon–Fri · 11 am–1 pm or 7–9 pm (peak scroll time)",
   facebook: "Wed–Fri · 1–4 pm (mid-week afternoon engagement spike)",
 }
-
-const IMAGE_MODELS = ["gemini-2.5-flash-image"] as const
-type ImageModelId = (typeof IMAGE_MODELS)[number]
 
 interface Props {
   post: PostRow
@@ -68,7 +66,6 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   const [analyzing, setAnalyzing] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const imageFileInputRef = useRef<HTMLInputElement | null>(null)
-  const [imageModel, setImageModel] = useState<ImageModelId>("gemini-2.5-flash-image")
   const [evaluation, setEvaluation] = useState<{
     score: number
     strengths: string[]
@@ -150,24 +147,23 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
   }
 
   async function handleGenerateImage() {
-    if (!imagePrompt.trim()) {
-      toast.error("Enter a visual prompt first")
+    const fallbackPrompt = caption.trim().slice(0, 500)
+    const effectivePrompt = imagePrompt.trim() || fallbackPrompt
+    if (!effectivePrompt) {
+      toast.error("Add a visual prompt or caption first")
       return
     }
+
     setGeneratingImage(true)
     try {
-      const res = await fetch("/api/generate/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: imagePrompt, post_id: post.id, model: imageModel }),
+      const image_url = await generateAndAttachPostImage({
+        id: post.id,
+        caption,
+        image_prompt: effectivePrompt,
       })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error ?? "Image generation failed")
-      }
-      const data = await res.json()
-      setImageUrl(data.image_url)
-      toast.success("Image generated!")
+      setImageUrl(image_url)
+      if (!imagePrompt.trim()) setImagePrompt(effectivePrompt)
+      toast.success("Image generated with Puter")
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Image generation failed")
     } finally {
@@ -557,21 +553,6 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
               className="resize-none text-sm"
               placeholder="Describe the visual for this post — used for both image and video generation..."
             />
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Image Model</Label>
-              <Select value={imageModel} onValueChange={(v) => setImageModel(v as ImageModelId)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {IMAGE_MODELS.map((modelId) => (
-                    <SelectItem key={modelId} value={modelId}>
-                      {modelId}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="flex flex-wrap gap-2">
               <input
                 ref={imageFileInputRef}
@@ -610,7 +591,7 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
                 ) : (
                   <ImageIcon className="h-3.5 w-3.5" />
                 )}
-                {generatingImage ? "Generating..." : `Generate Image (${imageModel})`}
+                {generatingImage ? "Generating..." : "Generate Image (Puter)"}
               </Button>
 
               {/* Generate Video dropdown */}
