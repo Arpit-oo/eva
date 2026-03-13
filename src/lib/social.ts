@@ -13,12 +13,6 @@ type MetaPage = {
   access_token: string
 }
 
-type InstagramLoginTokenResult = {
-  accessToken: string
-  userId: string
-  permissions?: string[]
-}
-
 export function getAppBaseUrl(requestUrl?: string) {
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.trim().replace(/\/$/, "")
   if (requestUrl) return new URL(requestUrl).origin
@@ -59,31 +53,6 @@ function getMetaRedirectUri() {
   return "https://eva-project.vercel.app/api/social/meta/callback"
 }
 
-function getInstagramAppId() {
-  const value = process.env.INSTAGRAM_APP_ID?.trim() || process.env.META_APP_ID?.trim()
-  if (!value) throw new Error("INSTAGRAM_APP_ID or META_APP_ID is not configured")
-  return value
-}
-
-function getInstagramAppSecret() {
-  const value = process.env.INSTAGRAM_APP_SECRET?.trim() || process.env.META_APP_SECRET?.trim()
-  if (!value) throw new Error("INSTAGRAM_APP_SECRET or META_APP_SECRET is not configured")
-  return value
-}
-
-function buildInstagramEmbedUrl(state: string) {
-  const raw = process.env.INSTAGRAM_EMBED_URL?.trim()
-  if (!raw) return null
-  try {
-    const url = new URL(raw)
-    if (!url.searchParams.get("state")) {
-      url.searchParams.set("state", state)
-    }
-    return url.toString()
-  } catch {
-    throw new Error("INSTAGRAM_EMBED_URL is invalid")
-  }
-}
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -131,23 +100,7 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
     return `https://twitter.com/i/oauth2/authorize?${params.toString()}`
   }
 
-  if (platform === "instagram") {
-    const embedUrl = buildInstagramEmbedUrl(state)
-    if (embedUrl) return embedUrl
-
-    const clientId = getInstagramAppId()
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      state,
-      response_type: "code",
-      scope:
-        "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_messages,instagram_business_manage_comments",
-    })
-    return `https://www.instagram.com/oauth/authorize?${params.toString()}`
-  }
-
-  if (platform === "facebook") {
+  if (platform === "facebook" || platform === "instagram") {
     const appId = assertEnv("META_APP_ID")
     const scope = "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish"
     const params = new URLSearchParams({
@@ -244,67 +197,6 @@ async function exchangeMetaCode(code: string, redirectUri: string): Promise<OAut
   }
 }
 
-async function exchangeInstagramCode(code: string, redirectUri: string): Promise<InstagramLoginTokenResult> {
-  const clientId = getInstagramAppId()
-  const clientSecret = getInstagramAppSecret()
-
-  const res = await fetch("https://api.instagram.com/oauth/access_token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: toFormBody({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "authorization_code",
-      redirect_uri: redirectUri,
-      code,
-    }),
-  })
-
-  const text = await res.text()
-  if (!res.ok) throw new Error(`Instagram token exchange failed: ${text}`)
-
-  const json = parseJsonSafe(text) as {
-    access_token?: string
-    user_id?: string
-    permissions?: string[] | string
-    data?: Array<{ access_token?: string; user_id?: string; permissions?: string[] | string }>
-  }
-
-  const payload = Array.isArray(json.data) ? json.data[0] : json
-  if (!payload?.access_token || !payload?.user_id) {
-    throw new Error(`Instagram token exchange failed: ${text}`)
-  }
-
-  return {
-    accessToken: payload.access_token,
-    userId: payload.user_id,
-    permissions: Array.isArray(payload.permissions)
-      ? payload.permissions
-      : typeof payload.permissions === "string"
-      ? payload.permissions.split(",")
-      : undefined,
-  }
-}
-
-async function exchangeInstagramLongLivedToken(shortLivedToken: string) {
-  const clientSecret = getInstagramAppSecret()
-  const params = new URLSearchParams({
-    grant_type: "ig_exchange_token",
-    client_secret: clientSecret,
-    access_token: shortLivedToken,
-  })
-
-  const res = await fetch(`https://graph.instagram.com/access_token?${params.toString()}`)
-  const text = await res.text()
-  if (!res.ok) throw new Error(`Instagram long-lived token exchange failed: ${text}`)
-  const json = parseJsonSafe(text) as { access_token?: string; expires_in?: number }
-  if (!json.access_token) throw new Error(`Instagram long-lived token exchange failed: ${text}`)
-  return {
-    accessToken: json.access_token,
-    expiresIn: json.expires_in ?? null,
-  }
-}
-
 async function getLinkedInIdentity(accessToken: string) {
   const res = await fetch("https://api.linkedin.com/v2/userinfo", {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -333,25 +225,6 @@ async function getTwitterIdentity(accessToken: string) {
   }
 }
 
-async function getInstagramIdentity(accessToken: string) {
-  const res = await fetch(
-    `https://graph.instagram.com/me?fields=user_id,username&access_token=${encodeURIComponent(accessToken)}`
-  )
-  const text = await res.text()
-  if (!res.ok) throw new Error(`Instagram user lookup failed: ${text}`)
-  const data = parseJsonSafe(text) as {
-    user_id?: string
-    username?: string
-    data?: Array<{ user_id?: string; username?: string }>
-  }
-  const payload = Array.isArray(data.data) ? data.data[0] : data
-  if (!payload?.user_id) throw new Error(`Instagram user lookup failed: ${text}`)
-  return {
-    platformUserId: payload.user_id,
-    platformUsername: payload.username ?? null,
-    accessToken,
-  }
-}
 
 async function getMetaPages(accessToken: string): Promise<MetaPage[]> {
   const res = await fetch(
@@ -459,24 +332,7 @@ export async function handleOAuthCallback(args: {
     return
   }
 
-  if (args.platform === "instagram") {
-    const shortLived = await exchangeInstagramCode(args.code, redirectUri)
-    const longLived = await exchangeInstagramLongLivedToken(shortLived.accessToken)
-    const identity = await getInstagramIdentity(longLived.accessToken)
-    await upsertSocialConnection({
-      userId: args.userId,
-      platform: "instagram",
-      platformUserId: identity.platformUserId,
-      platformUsername: identity.platformUsername,
-      accessToken: identity.accessToken,
-      refreshToken: null,
-      expiresIn: longLived.expiresIn,
-      metaPageId: null,
-    })
-    return
-  }
-
-  if (args.platform === "facebook") {
+  if (args.platform === "facebook" || args.platform === "instagram") {
     const tokens = await exchangeMetaCode(args.code, redirectUri)
     const pages = await getMetaPages(tokens.accessToken)
 
@@ -616,7 +472,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
     createParams.set("image_url", post.image_url!)
   }
 
-  const createRes = await fetch(`https://graph.instagram.com/${connection.platform_user_id}/media`, {
+  const createRes = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: createParams.toString(),
@@ -630,7 +486,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
   if (isVideoPost) {
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const statusRes = await fetch(
-        `https://graph.instagram.com/${createData.id}?fields=status_code,status&access_token=${encodeURIComponent(connection.access_token)}`
+        `https://graph.facebook.com/v19.0/${createData.id}?fields=status_code,status&access_token=${encodeURIComponent(connection.access_token)}`
       )
       const statusRaw = await statusRes.text()
       if (!statusRes.ok) {
@@ -657,7 +513,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
     creation_id: createData.id,
     access_token: connection.access_token,
   })
-  const publishRes = await fetch(`https://graph.instagram.com/${connection.platform_user_id}/media_publish`, {
+  const publishRes = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: publishParams.toString(),
