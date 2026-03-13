@@ -13,12 +13,8 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const platform = getPlatform(url.searchParams.get("platform"))
     const clientId = process.env.META_APP_ID?.trim()
-    const configId = process.env.META_CONFIG_ID?.trim()
     if (!clientId) {
       throw new Error("META_APP_ID is not configured")
-    }
-    if (!configId) {
-      throw new Error("META_CONFIG_ID is not configured")
     }
 
     const state = `${platform}:${Date.now()}:${Math.random().toString(36).slice(2, 12)}`
@@ -26,14 +22,15 @@ export async function GET(request: Request) {
       client_id: clientId,
       redirect_uri: META_REDIRECT_URI,
       response_type: "code",
-      config_id: configId,
-      auth_type: "rerequest",
+      scope: "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish",
+      auth_type: "reauthorize",
+      prompt: "select_account",
       state,
     })
     const authorizeUrl = `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
 
     console.log(`[social][meta] redirect_uri=${META_REDIRECT_URI}`)
-    console.log(`[social][meta] config_id=${configId}`)
+    console.log("[social][meta] using explicit scopes flow")
     console.log(`[social][meta] oauth_url=${authorizeUrl}`)
 
     return NextResponse.redirect(authorizeUrl)

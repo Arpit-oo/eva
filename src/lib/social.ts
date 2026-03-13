@@ -101,14 +101,14 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
 
   if (platform === "facebook" || platform === "instagram") {
     const appId = assertEnv("META_APP_ID")
-    const configId = assertEnv("META_CONFIG_ID")
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
       state,
       response_type: "code",
-      config_id: configId,
-      auth_type: "rerequest",
+      scope: "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish",
+      auth_type: "reauthorize",
+      prompt: "select_account",
     })
     return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
   }
