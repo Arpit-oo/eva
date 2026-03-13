@@ -95,12 +95,16 @@ export function getOAuthAuthorizeUrl(platform: SocialPlatform, requestUrl: strin
 
   if (platform === "facebook" || platform === "instagram") {
     const appId = assertEnv("META_APP_ID")
+    const scope =
+      platform === "instagram"
+        ? "instagram_business_basic,instagram_manage_comments,instagram_business_manage_messages"
+        : "pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management"
     const params = new URLSearchParams({
       client_id: appId,
       redirect_uri: redirectUri,
       state,
       response_type: "code",
-      scope: "pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management",
+      scope,
     })
     return `https://www.facebook.com/v19.0/dialog/oauth?${params.toString()}`
   }
