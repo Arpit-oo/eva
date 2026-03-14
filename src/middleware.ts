@@ -17,6 +17,6 @@ export const config = {
      * - api/telegram-webhook (telegram uses its own validation)
      * - api/social (OAuth routes manage their own auth/redirect handling)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/cron|api/telegram-webhook|api/social).*)",
+    "/((?!_next/static|_next/image|favicon.ico|vanta|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/cron|api/telegram-webhook|api/social).*)",
   ],
 }

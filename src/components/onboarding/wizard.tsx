@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import Image from "next/image"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -19,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Loader2, X, Sparkles, Zap, CheckCircle2 } from "lucide-react"
+import { Loader2, X, Zap, CheckCircle2 } from "lucide-react"
+import catLogo from "../../../iconn/cat.png"
 
 const TONES = ["Professional", "Casual", "Playful", "Inspirational", "Educational", "Bold"]
 const FREQUENCIES = ["Daily", "3x per week", "5x per week", "Weekly", "Twice a week"]
@@ -104,8 +106,7 @@ export default function OnboardingWizard() {
   const progress = ((step - 1) / 3) * 100
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-lg">
+    <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-card/40 backdrop-blur-2xl shadow-[0_24px_64px_rgba(0,0,0,0.5)] p-6 md:p-8">
         {/* Progress bar */}
         <div className="mb-8">
           <div className="flex justify-between text-xs text-muted-foreground mb-2">
@@ -134,8 +135,15 @@ export default function OnboardingWizard() {
         {step === 1 && (
           <div className="text-center space-y-6">
             <div className="flex justify-center">
-              <div className="h-16 w-16 rounded-2xl bg-primary flex items-center justify-center">
-                <Sparkles className="h-8 w-8 text-primary-foreground" />
+              <div className="h-16 w-16 overflow-hidden rounded-2xl border border-white/20 bg-primary/20 shadow-[0_0_22px_rgba(76,145,255,0.35)]">
+                <Image
+                  src={catLogo}
+                  alt="EVA cat logo"
+                  width={64}
+                  height={64}
+                  className="h-full w-full object-cover"
+                  priority
+                />
               </div>
             </div>
             <div>
@@ -336,7 +344,6 @@ export default function OnboardingWizard() {
             </Button>
           </div>
         )}
-      </div>
     </div>
   )
 }

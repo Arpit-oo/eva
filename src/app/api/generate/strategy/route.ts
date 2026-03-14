@@ -7,6 +7,50 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function resolveWeeklyPostCount(postingFrequency: string | null | undefined): number {
+  const raw = String(postingFrequency ?? "").trim().toLowerCase()
+  if (!raw) return 7
+
+  if (raw.includes("daily") || raw.includes("every day") || raw.includes("7")) return 7
+  if (raw.includes("weekdays")) return 5
+  if (raw.includes("weekends")) return 2
+  if (raw.includes("weekly")) return 1
+
+  const perWeek = raw.match(/(\d+)\s*(?:x|times)?\s*(?:per\s*week|\/\s*week|\/\s*w|weekly)/)
+  if (perWeek) return clamp(Number(perWeek[1]), 1, 7)
+
+  const bareNumber = raw.match(/\b(\d+)\b/)
+  if (bareNumber) return clamp(Number(bareNumber[1]), 1, 7)
+
+  return 7
+}
+
+function pickStrategyDays(targetCount: number): string[] {
+  const count = clamp(targetCount, 1, DAYS.length)
+  if (count === DAYS.length) return DAYS
+  if (count === 1) return ["Monday"]
+
+  const selectedIndexes = new Set<number>()
+  const interval = (DAYS.length - 1) / (count - 1)
+  for (let i = 0; i < count; i += 1) {
+    selectedIndexes.add(Math.round(i * interval))
+  }
+
+  while (selectedIndexes.size < count) {
+    for (let i = 0; i < DAYS.length && selectedIndexes.size < count; i += 1) {
+      selectedIndexes.add(i)
+    }
+  }
+
+  return Array.from(selectedIndexes)
+    .sort((a, b) => a - b)
+    .map((i) => DAYS[i])
+}
+
 function getMondayOfCurrentWeek(): string {
   const now = new Date()
   const day = now.getDay() // 0=Sun, 1=Mon...
@@ -49,8 +93,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Brand profile not found" }, { status: 404 })
   }
 
+  const weeklyPostCount = resolveWeeklyPostCount(profile.posting_frequency)
+  const targetDays = pickStrategyDays(weeklyPostCount)
+  const dayList = targetDays.join(", ")
+
   // Build the prompt
-  const systemPrompt = `You are a social media content strategist. Given a brand profile, generate a 7-day content strategy plan.
+  const systemPrompt = `You are a social media content strategist. Given a brand profile, generate a weekly content strategy plan.
 You MUST respond with ONLY valid JSON matching this exact shape — no markdown, no explanation, no extra keys:
 {
   "week_theme": "string (overarching theme for the week, max 10 words)",
@@ -63,7 +111,7 @@ You MUST respond with ONLY valid JSON matching this exact shape — no markdown,
     }
   ]
 }
-The days array must contain exactly 7 entries, one for each day Monday–Sunday in order.`
+The days array must contain exactly ${targetDays.length} entries for these days in this exact order: ${dayList}.`
 
   const userPrompt = `Brand Name: ${profile.brand_name}
 Industry: ${profile.industry}
@@ -73,7 +121,7 @@ Posting Frequency: ${profile.posting_frequency}
 Keywords: ${(profile.keywords as string[]).join(", ") || "none"}
 Platforms: ${(profile.platforms as string[]).join(", ") || "all major platforms"}
 
-Generate a compelling 7-day content strategy for this brand.`
+Generate a compelling weekly strategy for this brand. It should contain exactly ${targetDays.length} strategy days for: ${dayList}.`
 
   let strategyJson: StrategyJson
 
@@ -92,17 +140,29 @@ Generate a compelling 7-day content strategy for this brand.`
     const parsed = JSON.parse(raw)
 
     // Normalise + validate shape
-    if (!parsed.week_theme || !Array.isArray(parsed.days) || parsed.days.length !== 7) {
+    if (!parsed.week_theme || !Array.isArray(parsed.days) || parsed.days.length !== targetDays.length) {
       throw new Error("Invalid strategy shape from AI")
     }
 
     strategyJson = {
       week_theme: String(parsed.week_theme),
-      days: DAYS.map((day, i) => ({
+      days: targetDays.map((day, i) => ({
         day_of_week: day,
-        content_type: String(parsed.days[i]?.content_type ?? "Educational"),
-        theme: String(parsed.days[i]?.theme ?? ""),
-        target_emotion: String(parsed.days[i]?.target_emotion ?? "Inspired"),
+        content_type: String(
+          parsed.days.find((item: { day_of_week?: string }) => item?.day_of_week === day)?.content_type
+            ?? parsed.days[i]?.content_type
+            ?? "Educational"
+        ),
+        theme: String(
+          parsed.days.find((item: { day_of_week?: string }) => item?.day_of_week === day)?.theme
+            ?? parsed.days[i]?.theme
+            ?? ""
+        ),
+        target_emotion: String(
+          parsed.days.find((item: { day_of_week?: string }) => item?.day_of_week === day)?.target_emotion
+            ?? parsed.days[i]?.target_emotion
+            ?? "Inspired"
+        ),
       })),
     }
   } catch (err: unknown) {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { generateAndUploadPostImage } from "@/lib/puter-image"
 import { toast } from "sonner"
@@ -11,6 +12,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -23,28 +25,35 @@ import {
   Pencil,
   FileText,
   Clock,
+  Plus,
+  Linkedin,
+  Twitter,
+  Instagram,
+  Facebook,
 } from "lucide-react"
 import { PostEditorModal } from "@/components/post-editor-modal"
+import { cn } from "@/lib/utils"
 import type { BrandProfileRow, StrategyRow, PostRow } from "@/lib/types"
+import { CatLoader } from "@/components/ui/cat-loader"
 
-const EMOTION_COLORS: Record<string, string> = {
-  Inspired: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
-  Curious: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  Trusting: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  Excited: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
-  Amused: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
-  Motivated: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  Empowered: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
+const DAY_META: Record<string, { border: string; initial: string }> = {
+  Monday: { border: "#3b82f6", initial: "M" },
+  Tuesday: { border: "#8b5cf6", initial: "T" },
+  Wednesday: { border: "#ec4899", initial: "W" },
+  Thursday: { border: "#f97316", initial: "T" },
+  Friday: { border: "#10b981", initial: "F" },
+  Saturday: { border: "#06b6d4", initial: "S" },
+  Sunday: { border: "#f59e0b", initial: "S" },
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  Educational: "default",
-  Motivational: "default",
-  "Behind-the-Scenes": "secondary",
-  "Case Study": "secondary",
-  Promotional: "destructive",
-  Engagement: "outline",
-  Story: "outline",
+const CONTENT_TYPE_STYLES: Record<string, { background: string; color: string }> = {
+  Educational: { background: "var(--gen-type-educational-bg)", color: "var(--gen-type-educational-text)" },
+  Engagement: { background: "var(--gen-type-engagement-bg)", color: "var(--gen-type-engagement-text)" },
+  Promotional: { background: "var(--gen-type-promotional-bg)", color: "var(--gen-type-promotional-text)" },
+  Motivational: { background: "var(--gen-type-motivational-bg)", color: "var(--gen-type-motivational-text)" },
+  "Behind-the-Scenes": { background: "var(--gen-type-bts-bg)", color: "var(--gen-type-bts-text)" },
+  Story: { background: "var(--gen-type-story-bg)", color: "var(--gen-type-story-text)" },
+  "Case Study": { background: "var(--gen-type-case-study-bg)", color: "var(--gen-type-case-study-text)" },
 }
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -54,19 +63,26 @@ const PLATFORM_ICONS: Record<string, string> = {
   facebook: "fb",
 }
 
-const PLATFORM_COLORS: Record<string, string> = {
-  linkedin: "bg-blue-600 text-white",
-  twitter: "bg-black text-white",
-  instagram: "bg-pink-500 text-white",
-  facebook: "bg-blue-500 text-white",
+const PLATFORM_COLORS: Record<string, { background: string; color: string }> = {
+  linkedin: { background: "#0a66c2", color: "#ffffff" },
+  twitter: { background: "#1da1f2", color: "#ffffff" },
+  instagram: { background: "#e1306c", color: "#ffffff" },
+  facebook: { background: "#1877f2", color: "#ffffff" },
 }
 
-function emotionClass(emotion: string) {
-  return (
-    EMOTION_COLORS[emotion] ??
-    "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
-  )
+const PLATFORM_BORDER_COLORS: Record<string, string> = {
+  linkedin: "#0a66c2",
+  twitter: "#1da1f2",
+  instagram: "#e1306c",
+  facebook: "#1877f2",
 }
+
+const PLATFORM_WATERMARK_ICONS = {
+  linkedin: Linkedin,
+  twitter: Twitter,
+  instagram: Instagram,
+  facebook: Facebook,
+} as const
 
 function formatDate(weekStart: string) {
   const d = new Date(weekStart + "T00:00:00")
@@ -79,8 +95,32 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0]
 }
 
+const DAY_OFFSET: Record<string, number> = {
+  Monday: 0,
+  Tuesday: 1,
+  Wednesday: 2,
+  Thursday: 3,
+  Friday: 4,
+  Saturday: 5,
+  Sunday: 6,
+}
+
+function getStrategyMaxDayOffset(strategy: StrategyRow): number {
+  const days = strategy.strategy_json.days ?? []
+  if (!days.length) return 0
+  return Math.max(...days.map((day) => DAY_OFFSET[day.day_of_week] ?? 0))
+}
+
+type AiCheckResult = {
+  authenticity_score: number
+  verdict: "likely_human" | "mixed" | "likely_ai"
+  rationale: string
+  suggestions: string[]
+}
+
 export default function GeneratePage() {
   const supabase = createClient()
+  const router = useRouter()
 
   const [profiles, setProfiles] = useState<BrandProfileRow[]>([])
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null)
@@ -95,6 +135,8 @@ export default function GeneratePage() {
   const [imageProgress, setImageProgress] = useState<{ completed: number; total: number } | null>(null)
   const [editingPost, setEditingPost] = useState<PostRow | null>(null)
   const [loadingPosts, setLoadingPosts] = useState(false)
+  const [checkingPostId, setCheckingPostId] = useState<string | null>(null)
+  const [aiChecks, setAiChecks] = useState<Record<string, AiCheckResult>>({})
 
   useEffect(() => {
     loadInit()
@@ -139,7 +181,7 @@ export default function GeneratePage() {
   async function loadPosts(strategy: StrategyRow) {
     setLoadingPosts(true)
     try {
-      const weekEnd = addDays(strategy.week_start, 6)
+      const weekEnd = addDays(strategy.week_start, getStrategyMaxDayOffset(strategy))
       const res = await fetch(`/api/posts?start_date=${strategy.week_start}&end_date=${weekEnd}`)
       if (res.ok) {
         const data = await res.json()
@@ -151,6 +193,10 @@ export default function GeneratePage() {
   }
 
   async function handleProfileChange(id: string) {
+    if (id === "__create_brand__") {
+      router.push("/settings#profile")
+      return
+    }
     setActiveProfileId(id)
     setStrategies([])
     setSelectedStrategy(null)
@@ -170,6 +216,11 @@ export default function GeneratePage() {
     setGenerating(true)
     setPosts([])
     try {
+      if (strategies.length > 0) {
+        toast("Regenerating strategy...", {
+          description: "EVA is building a fresh content plan.",
+        })
+      }
       const res = await fetch("/api/generate/strategy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -183,6 +234,7 @@ export default function GeneratePage() {
       const newStrategy = data.strategy as StrategyRow
       setStrategies((prev) => [newStrategy, ...prev])
       setSelectedStrategy(newStrategy)
+      setAiChecks({})
       toast.success("Strategy generated!")
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Generation failed")
@@ -195,6 +247,7 @@ export default function GeneratePage() {
     if (!selectedStrategy) return
     setGeneratingPosts(true)
     setImageProgress(null)
+    setAiChecks({})
     try {
       const res = await fetch("/api/generate/posts", {
         method: "POST",
@@ -214,13 +267,21 @@ export default function GeneratePage() {
       )
 
       if (candidates.length === 0) {
-        toast.success(`${generatedPosts.length} posts generated!`)
+        toast("Posts regenerated!", {
+          description: "Your 7 posts are ready to review.",
+          action: {
+            label: "View Posts",
+            onClick: () => {
+              const cards = document.querySelector(".generate-post-card")
+              if (cards) cards.scrollIntoView({ behavior: "smooth", block: "start" })
+            },
+          },
+        })
         return
       }
 
       setImageProgress({ completed: 0, total: candidates.length })
 
-      let imageSuccesses = 0
       let imageFailures = 0
 
       for (let index = 0; index < candidates.length; index += 1) {
@@ -233,7 +294,6 @@ export default function GeneratePage() {
             postId: post.id,
           })
 
-          imageSuccesses += 1
           setPosts((currentPosts) =>
             currentPosts.map((currentPost) =>
               currentPost.id === post.id
@@ -250,17 +310,50 @@ export default function GeneratePage() {
       }
 
       if (imageFailures > 0) {
-        toast.success(
-          `${generatedPosts.length} posts generated. ${imageSuccesses} images attached, ${imageFailures} left as text-only.`
-        )
-      } else {
-        toast.success(`${generatedPosts.length} posts generated with images!`)
+        toast.warning(`${imageFailures} visuals could not be attached, but your posts are ready.`)
       }
+
+      toast("Posts regenerated!", {
+        description: "Your 7 posts are ready to review.",
+        action: {
+          label: "View Posts",
+          onClick: () => {
+            const cards = document.querySelector(".generate-post-card")
+            if (cards) cards.scrollIntoView({ behavior: "smooth", block: "start" })
+          },
+        },
+      })
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Post generation failed")
     } finally {
       setImageProgress(null)
       setGeneratingPosts(false)
+    }
+  }
+
+  async function handleAiCheck(post: PostRow) {
+    setCheckingPostId(post.id)
+    try {
+      const res = await fetch("/api/generate/ai-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ post_id: post.id }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "AI check failed")
+      }
+
+      const result = (await res.json()) as AiCheckResult
+      setAiChecks((prev) => ({ ...prev, [post.id]: result }))
+      toast("AI Check complete", {
+        description: "Quality score ready. Check your post card.",
+      })
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "AI check failed")
+    } finally {
+      setCheckingPostId(null)
     }
   }
 
@@ -292,33 +385,45 @@ export default function GeneratePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 generate-page">
       {/* Header */}
-      <div className="eva-surface flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-5 py-4">
+      <div className="generate-header-card flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-5 py-4">
         <div>
-          <h1 className="text-2xl font-semibold">Generate</h1>
-          <p className="text-muted-foreground text-sm">AI-powered weekly content strategy</p>
+          <h1 className="text-2xl font-semibold generate-header-title">Generate</h1>
+          <p className="text-muted-foreground text-sm generate-header-subtitle">AI-powered weekly content strategy</p>
         </div>
         <div className="flex items-center gap-3">
-          {profiles.length > 1 && (
+          {profiles.length >= 1 && (
             <Select value={activeProfileId ?? ""} onValueChange={handleProfileChange}>
-              <SelectTrigger className="w-44">
+              <SelectTrigger className="w-44 generate-brand-select">
                 <SelectValue placeholder="Select profile" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="generate-brand-menu">
                 {profiles.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
+                  <SelectItem key={p.id} value={p.id} className="generate-brand-item">
                     {p.brand_name}
                   </SelectItem>
                 ))}
+                <SelectSeparator />
+                <SelectItem value="__create_brand__" className="generate-brand-item generate-create-brand-item">
+                  <span className="flex items-center gap-1.5">
+                    <Plus className="h-3.5 w-3.5" />
+                    Create Brand Identity
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           )}
-          <Button onClick={handleGenerate} disabled={generating}>
+          <Button
+            variant="outline"
+            onClick={handleGenerate}
+            disabled={generating}
+            className="calendar-refresh-btn"
+          >
             {generating ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : strategies.length > 0 ? (
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-[15px] w-[15px] mr-2" />
             ) : (
               <Sparkles className="h-4 w-4 mr-2" />
             )}
@@ -335,7 +440,7 @@ export default function GeneratePage() {
             <div className="text-center">
               <p className="text-sm font-medium text-foreground">No strategy yet</p>
               <p className="text-sm mt-1">
-                Click &quot;Generate Strategy&quot; to create a 7-day content plan for{" "}
+                Click &quot;Generate Strategy&quot; to create a content plan for{" "}
                 <span className="font-medium">{activeProfile?.brand_name}</span>
               </p>
             </div>
@@ -345,15 +450,7 @@ export default function GeneratePage() {
 
       {/* Generating skeleton */}
       {generating && (
-        <Card className="eva-surface">
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <div className="text-center">
-              <p className="font-medium">Crafting your strategy...</p>
-              <p className="text-sm text-muted-foreground mt-1">GPT-4o-mini is analysing your brand profile</p>
-            </div>
-          </CardContent>
-        </Card>
+        <CatLoader overlay />
       )}
 
       {/* Strategy display */}
@@ -377,9 +474,9 @@ export default function GeneratePage() {
                 <SelectTrigger className="h-8 w-52">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="generate-brand-menu">
                   {strategies.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                    <SelectItem key={s.id} value={s.id} className="generate-brand-item">
                       Week of {formatDate(s.week_start)}
                     </SelectItem>
                   ))}
@@ -389,58 +486,75 @@ export default function GeneratePage() {
           )}
 
           {/* Week theme banner */}
-          <Card className="border border-primary/20 bg-primary/90 text-primary-foreground shadow-[0_20px_34px_rgba(61,117,214,0.36)]">
+          <Card className="generate-week-banner">
             <CardContent className="flex items-center gap-3 py-4">
               <Calendar className="h-5 w-5 shrink-0 opacity-80" />
               <div>
-                <p className="text-xs opacity-70 uppercase tracking-wide font-medium">
+                <p className="text-xs opacity-70 uppercase tracking-wide font-medium generate-week-label">
                   Week Theme &middot; {formatDate(selectedStrategy.week_start)}
                 </p>
-                <p className="font-semibold text-lg leading-snug">
+                <p className="font-semibold text-lg leading-snug generate-week-title">
                   {selectedStrategy.strategy_json.week_theme}
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          {/* 7-day strategy grid */}
+          {/* Strategy grid */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {selectedStrategy.strategy_json.days.map((day) => (
-              <Card key={day.day_of_week} className="eva-elevated relative overflow-hidden">
-                <CardHeader className="pb-2 pt-4">
+              <Card
+                key={day.day_of_week}
+                className="eva-elevated relative overflow-hidden"
+                style={{ borderTop: `3px solid ${DAY_META[day.day_of_week]?.border ?? "#3b82f6"}` }}
+              >
+                <CardHeader className="pb-2 pt-4 relative z-[1]">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold">{day.day_of_week}</CardTitle>
+                    <CardTitle className="text-sm font-semibold generate-day-name">{day.day_of_week}</CardTitle>
                     <Badge
-                      variant={
-                        (TYPE_COLORS[day.content_type] as
-                          | "default"
-                          | "secondary"
-                          | "outline"
-                          | "destructive") ?? "secondary"
-                      }
-                      className="text-xs shrink-0"
+                      variant="outline"
+                      className="text-xs shrink-0 border-0 rounded-[20px] px-[10px] py-[3px]"
+                      style={{
+                        background: CONTENT_TYPE_STYLES[day.content_type]?.background,
+                        color: CONTENT_TYPE_STYLES[day.content_type]?.color,
+                        fontSize: "12px",
+                      }}
                     >
                       {day.content_type}
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2 pb-4">
-                  <p className="text-sm leading-snug">{day.theme}</p>
+                <CardContent className="space-y-2 pb-4 relative z-[1]">
+                  <p className="text-sm leading-snug generate-day-topic">{day.theme}</p>
                   <span
-                    className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${emotionClass(
-                      day.target_emotion
-                    )}`}
+                    className="inline-block rounded-[20px] px-[10px] py-[3px] font-medium"
+                    style={{
+                      background: "var(--gen-tone-chip-bg)",
+                      color: "var(--gen-tone-chip-text)",
+                      fontSize: "11px",
+                    }}
                   >
                     {day.target_emotion}
                   </span>
                 </CardContent>
+                <span
+                  className="pointer-events-none absolute bottom-[10px] right-[14px] z-0 select-none text-[64px] font-bold leading-none generate-day-watermark"
+                  style={{ opacity: "var(--gen-day-watermark-opacity)" }}
+                >
+                  {DAY_META[day.day_of_week]?.initial ?? day.day_of_week.charAt(0)}
+                </span>
               </Card>
             ))}
           </div>
 
           {/* Generate Posts CTA */}
           <div className="flex justify-end pt-2">
-            <Button onClick={handleGeneratePosts} disabled={generatingPosts} className="gap-2 rounded-xl">
+            <Button
+              variant="outline"
+              onClick={handleGeneratePosts}
+              disabled={generatingPosts}
+              className="gap-2 calendar-refresh-btn"
+            >
               {generatingPosts ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -459,21 +573,7 @@ export default function GeneratePage() {
 
           {/* Generating posts loading */}
           {generatingPosts && (
-            <Card className="eva-surface">
-              <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
-                <Loader2 className="h-7 w-7 animate-spin text-primary" />
-                <div className="text-center">
-                  <p className="font-medium">
-                    {imageProgress ? "Generating your visuals..." : "Writing your posts..."}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {imageProgress
-                      ? `Creating and attaching images ${imageProgress.completed}/${imageProgress.total}`
-                      : "Generating platform-specific content for all 7 days"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <CatLoader overlay />
           )}
 
           {/* Posts Grid */}
@@ -493,14 +593,17 @@ export default function GeneratePage() {
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {posts.map((post) => (
-                    <Card key={post.id} className="eva-elevated relative group">
-                      <CardHeader className="pb-2 pt-4">
+                    <Card
+                      key={post.id}
+                      className="eva-elevated relative group generate-post-card"
+                      style={{ borderLeft: `3px solid ${PLATFORM_BORDER_COLORS[post.platform] ?? "#6b7280"}` }}
+                    >
+                      <CardHeader className="pb-2 pt-4 relative z-[1]">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <span
-                              className={`text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
-                                PLATFORM_COLORS[post.platform] ?? "bg-muted text-foreground"
-                              }`}
+                              className="text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wide"
+                              style={PLATFORM_COLORS[post.platform] ?? { background: "hsl(var(--muted))", color: "hsl(var(--foreground))" }}
                             >
                               {PLATFORM_ICONS[post.platform] ?? post.platform}
                             </span>
@@ -510,7 +613,7 @@ export default function GeneratePage() {
                           </div>
                           <div className="flex items-center gap-2">
                             {post.scheduled_date && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground flex items-center gap-1 generate-post-time">
                                 <Clock className="h-3 w-3" />
                                 {new Date(
                                   post.scheduled_date + "T00:00:00"
@@ -522,25 +625,16 @@ export default function GeneratePage() {
                                 {post.scheduled_time && ` · ${post.scheduled_time.slice(0, 5)}`}
                               </span>
                             )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-                              onClick={() => setEditingPost(post)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                              Edit
-                            </Button>
                           </div>
                         </div>
                       </CardHeader>
-                      <CardContent className="space-y-3 pb-4">
-                        <p className="text-sm leading-relaxed line-clamp-4">{post.caption}</p>
+                      <CardContent className="space-y-3 pb-4 relative z-[1]">
+                        <p className="text-sm leading-relaxed line-clamp-4 generate-post-caption">{post.caption}</p>
                         {post.hashtags && post.hashtags.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {post.hashtags.slice(0, 5).map((tag) => (
-                              <span key={tag} className="text-xs text-primary">
-                                #{tag}
+                              <span key={tag} style={{ color: "var(--gen-hashtag-color)", fontSize: "13px" }}>
+                                #{String(tag).replace(/^#+/, "")}
                               </span>
                             ))}
                             {post.hashtags.length > 5 && (
@@ -550,10 +644,78 @@ export default function GeneratePage() {
                             )}
                           </div>
                         )}
-                        <Badge variant="outline" className="text-xs capitalize">
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9"
+                            onClick={() => handleAiCheck(post)}
+                            disabled={checkingPostId === post.id}
+                          >
+                            {checkingPostId === post.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                              <Sparkles className="h-4 w-4 mr-2" />
+                            )}
+                            AI Checker
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="h-9 generate-edit-btn"
+                            onClick={() => setEditingPost(post)}
+                          >
+                            <Pencil className="h-[15px] w-[15px] mr-2 text-white" />
+                            Edit Post
+                          </Button>
+                        </div>
+                        {aiChecks[post.id] && (
+                          <div className="rounded-md border px-3 py-2 text-xs space-y-1 bg-background/70">
+                            <p className="font-medium">
+                              AI Checker: {aiChecks[post.id].authenticity_score}/100 ({aiChecks[post.id].verdict.replace("_", " ")})
+                            </p>
+                            <p className="text-muted-foreground">{aiChecks[post.id].rationale}</p>
+                            {aiChecks[post.id].suggestions.length > 0 && (
+                              <p className="text-muted-foreground">
+                                Try: {aiChecks[post.id].suggestions.join(" • ")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className="text-xs capitalize"
+                          style={
+                            post.status === "draft"
+                              ? {
+                                  background: "var(--gen-draft-bg)",
+                                  color: "var(--gen-draft-text)",
+                                  border: "1px solid var(--gen-draft-border)",
+                                  borderRadius: "6px",
+                                  padding: "3px 10px",
+                                  fontSize: "12px",
+                                }
+                              : undefined
+                          }
+                        >
                           {post.status}
                         </Badge>
                       </CardContent>
+                      {(() => {
+                        const PlatformWatermarkIcon =
+                          PLATFORM_WATERMARK_ICONS[post.platform as keyof typeof PLATFORM_WATERMARK_ICONS] ?? FileText
+                        return (
+                          <PlatformWatermarkIcon
+                            className={cn(
+                              "pointer-events-none absolute bottom-3 right-3 h-12 w-12 z-0 platform-watermark",
+                              post.platform === "linkedin" && "platform-watermark-linkedin",
+                              post.platform === "twitter" && "platform-watermark-twitter",
+                              post.platform === "instagram" && "platform-watermark-instagram",
+                              post.platform === "facebook" && "platform-watermark-facebook"
+                            )}
+                          />
+                        )
+                      })()}
                     </Card>
                   ))}
                 </div>

@@ -12,6 +12,10 @@ import {
   ImageIcon,
   Video,
   SlidersHorizontal,
+  Linkedin,
+  Instagram,
+  Twitter,
+  Facebook,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,13 +29,28 @@ import {
 } from "@/components/ui/select"
 import { PostEditorModal } from "@/components/post-editor-modal"
 import type { PostRow } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const PLATFORM_COLORS: Record<string, string> = {
-  linkedin: "#0077B5",
+  linkedin: "#0a66c2",
   instagram: "#E1306C",
   twitter: "#1DA1F2",
   facebook: "#1877F2",
   tiktok: "#69C9D0",
+}
+
+const PLATFORM_WATERMARK_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  linkedin: Linkedin,
+  instagram: Instagram,
+  twitter: Twitter,
+  facebook: Facebook,
+}
+
+const PLATFORM_BANNERS: Record<string, string> = {
+  instagram: "linear-gradient(135deg, #e1306c, #f77737)",
+  linkedin: "linear-gradient(135deg, #0a66c2, #0077b5)",
+  twitter: "linear-gradient(135deg, #1da1f2, #0d8ecf)",
+  facebook: "linear-gradient(135deg, #1877f2, #166fe5)",
 }
 
 const STATUS_VARIANTS: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -92,42 +111,42 @@ export default function LibraryPage() {
   const platforms = Array.from(new Set(posts.map((p) => p.platform)))
 
   return (
-    <div className="flex flex-col gap-6 p-2 md:p-0 w-full">
+    <div className="library-page flex flex-col gap-6 p-2 md:p-0 w-full">
       {/* Header */}
-      <div className="eva-surface flex items-center justify-between px-5 py-4">
+      <div className="library-header-card flex items-center justify-between px-5 py-4">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <h1 className="library-header-title text-2xl font-semibold flex items-center gap-2">
             <Library className="h-6 w-6 text-primary" />
             Post Library
           </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
+          <p className="library-header-subtitle text-muted-foreground text-sm mt-0.5">
             All your generated and saved posts in one place.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchPosts} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={fetchPosts} disabled={loading} className="library-refresh-btn">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           Refresh
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="eva-surface flex flex-wrap gap-3 items-center px-4 py-3">
+      <div className="library-filter-bar flex flex-wrap gap-3 items-center px-4 py-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search captions, hashtags..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 eva-input"
+            className="pl-9 eva-input library-search-input"
           />
         </div>
         <div className="flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
           <Select value={filterPlatform} onValueChange={setFilterPlatform}>
-            <SelectTrigger className="w-36 rounded-xl bg-muted/60 border-white/10">
+            <SelectTrigger className="w-36 rounded-xl bg-muted/60 border-white/10 library-filter-select">
               <SelectValue placeholder="Platform" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="library-filter-menu">
               <SelectItem value="all">All Platforms</SelectItem>
               {platforms.map((p) => (
                 <SelectItem key={p} value={p} className="capitalize">
@@ -137,10 +156,10 @@ export default function LibraryPage() {
             </SelectContent>
           </Select>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-32 rounded-xl bg-muted/60 border-white/10">
+            <SelectTrigger className="w-32 rounded-xl bg-muted/60 border-white/10 library-filter-select">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="library-filter-menu">
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="draft">Draft</SelectItem>
               <SelectItem value="scheduled">Scheduled</SelectItem>
@@ -148,7 +167,7 @@ export default function LibraryPage() {
             </SelectContent>
           </Select>
         </div>
-        <span className="text-xs text-muted-foreground ml-auto">
+        <span className="library-post-count text-xs text-muted-foreground ml-auto">
           {filtered.length} post{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -170,32 +189,60 @@ export default function LibraryPage() {
           {filtered.map((post) => (
             <div
               key={post.id}
-              className="eva-elevated rounded-2xl overflow-hidden flex flex-col group hover:border-primary/60 transition-colors"
+              className="library-post-card rounded-2xl overflow-hidden flex flex-col group"
+              data-platform={post.platform}
+              style={{
+                borderTop: `3px solid ${PLATFORM_COLORS[post.platform] ?? "#6366f1"}`,
+                borderRadius: "16px",
+                overflow: "hidden",
+              }}
             >
               {/* Image thumbnail */}
               {post.image_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={post.image_url}
-                  alt=""
-                  className="w-full aspect-video object-cover"
+                <div className="relative">
+                  <span
+                    className="absolute top-0 left-0 right-0 z-[1] h-1"
+                    style={{ background: PLATFORM_COLORS[post.platform] ?? "#6366f1" }}
+                  />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={post.image_url}
+                    alt=""
+                    className="w-full aspect-video object-cover"
+                  />
+                </div>
+              )}
+
+              {!post.image_url && (
+                <div
+                  className="h-14 w-full"
+                  style={{
+                    background: PLATFORM_BANNERS[post.platform] ?? "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                    borderRadius: "12px 12px 0 0",
+                    opacity: 0.9,
+                    position: "relative",
+                    zIndex: 1,
+                  }}
                 />
               )}
 
-              <div className="p-4 flex flex-col gap-2 flex-1">
+              <div className="p-4 flex flex-col gap-2 flex-1 relative z-[1]">
                 {/* Platform + status */}
                 <div className="flex items-center gap-2">
                   <Badge
                     variant="secondary"
-                    className="capitalize text-xs rounded-full"
-                    style={{
-                      backgroundColor: (PLATFORM_COLORS[post.platform] ?? "#6366f1") + "20",
-                      color: PLATFORM_COLORS[post.platform] ?? "#6366f1",
-                    }}
+                    className="library-platform-badge capitalize text-xs rounded-full"
+                    data-platform={post.platform}
                   >
                     {post.platform === "twitter" ? "Twitter/X" : post.platform}
                   </Badge>
-                  <Badge variant={STATUS_VARIANTS[post.status] ?? "outline"} className="capitalize text-xs rounded-full">
+                  <Badge
+                    variant={STATUS_VARIANTS[post.status] ?? "outline"}
+                    className={cn(
+                      "library-status-badge capitalize text-xs rounded-full",
+                      post.status === "draft" && "library-status-draft"
+                    )}
+                  >
                     {post.status}
                   </Badge>
                   {post.video_url && (
@@ -207,21 +254,21 @@ export default function LibraryPage() {
                 </div>
 
                 {/* Caption */}
-                <p className="text-sm text-muted-foreground line-clamp-3 flex-1">
+                <p className="library-post-caption text-sm text-muted-foreground line-clamp-3 flex-1">
                   {post.caption ?? "(no caption)"}
                 </p>
 
                 {/* Hashtags */}
                 {post.hashtags && post.hashtags.length > 0 && (
-                  <p className="text-xs text-primary/70 truncate">
-                    #{post.hashtags.slice(0, 5).join(" #")}
+                  <p className="library-post-hashtags text-xs text-primary/70 truncate">
+                    #{post.hashtags.slice(0, 5).map((tag) => String(tag).replace(/^#+/, "")).join(" #")}
                     {post.hashtags.length > 5 && ` +${post.hashtags.length - 5} more`}
                   </p>
                 )}
 
                 {/* Schedule info */}
                 {post.scheduled_date && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="library-post-timestamp text-xs text-muted-foreground">
                     📅 {post.scheduled_date}
                     {post.scheduled_time && ` at ${post.scheduled_time}`}
                   </p>
@@ -243,16 +290,27 @@ export default function LibraryPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-auto gap-1.5 w-full"
+                  className="library-edit-btn mt-auto gap-1.5 w-full"
                   onClick={() => {
                     setSelectedPost(post)
                     setModalOpen(true)
                   }}
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Pencil className="h-[15px] w-[15px] text-white" />
                   Edit Post
                 </Button>
               </div>
+
+              {(() => {
+                const WatermarkIcon = PLATFORM_WATERMARK_ICON[post.platform]
+                if (!WatermarkIcon) return null
+                return (
+                  <WatermarkIcon
+                    className="library-platform-watermark pointer-events-none absolute bottom-[14px] right-[14px] h-12 w-12 z-0"
+                    data-platform={post.platform}
+                  />
+                )
+              })()}
             </div>
           ))}
         </div>

@@ -29,11 +29,19 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background relative">
+      {/* Animated ambient orbs */}
+      <div className="bg-orb-a" aria-hidden="true" />
+      <div className="bg-orb-b" aria-hidden="true" />
+      <div className="bg-orb-c" aria-hidden="true" />
+
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
+
+      <div className="ml-14 flex flex-1 flex-col overflow-hidden relative z-10">
         <Header userEmail={user.email} userName={userData?.name ?? undefined} />
-        <main className="flex-1 overflow-y-auto px-5 py-4 md:px-7 md:py-5">{children}</main>
+        <main className="flex-1 overflow-y-auto px-5 py-4 md:px-7 md:py-5">
+          {children}
+        </main>
       </div>
     </div>
   )

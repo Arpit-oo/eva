@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:reset": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; if (Test-Path .next) { Remove-Item -Recurse -Force .next }\" && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

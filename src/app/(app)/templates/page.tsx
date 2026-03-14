@@ -98,19 +98,25 @@ export default function TemplatesPage() {
   })
 
   return (
-    <div className="flex flex-col gap-6 p-2 md:p-0 w-full">
+    <div className="templates-page flex flex-col gap-6 p-2 md:p-0 w-full">
       {/* Header */}
-      <div className="eva-surface flex items-center justify-between px-5 py-4">
+      <div className="templates-header-card flex items-center justify-between px-5 py-4">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <LayoutTemplate className="h-6 w-6 text-primary" />
+          <h1 className="templates-header-title text-2xl font-semibold flex items-center gap-2">
+            <LayoutTemplate className="templates-header-icon h-6 w-6 text-primary" />
             Templates
           </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
+          <p className="templates-header-subtitle text-muted-foreground text-sm mt-0.5">
             Reusable content frameworks. Save posts as templates from the post editor.
           </p>
         </div>
-        <Button variant="secondary" size="sm" onClick={fetchTemplates} disabled={loading} className="rounded-xl">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={fetchTemplates}
+          disabled={loading}
+          className="rounded-xl templates-refresh-btn"
+        >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           <span className="hidden sm:inline">Refresh</span>
         </Button>

@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -7,84 +8,85 @@ import {
   Sparkles,
   Calendar,
   BookOpen,
-  FileStack,
+  NotebookText,
   Settings,
-  Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import catboxLogo from "../../../iconn/catbox.jpg"
+import guitarCatAvatar from "../../../iconn/guitarcat.jpg"
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/generate", label: "Generate", icon: Sparkles },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/library", label: "Library", icon: BookOpen },
-  { href: "/templates", label: "Templates", icon: FileStack },
+  { href: "/templates", label: "Templates", icon: NotebookText },
 ]
+
+function NavItem({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      aria-label={href.replace("/", "") || "home"}
+      className="flex h-11 w-11 items-center justify-center rounded-[10px] transition-colors hover:bg-white/[0.06]"
+    >
+      <span
+        className={cn(
+          "flex h-9 w-9 items-center justify-center rounded-full transition-all",
+          active ? "bg-[#3b82f6] text-white shadow-[0_0_18px_rgba(59,130,246,0.45)]" : "text-slate-400"
+        )}
+      >
+        {children}
+      </span>
+    </Link>
+  )
+}
 
 export default function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="flex flex-col w-64 min-h-screen border-r border-white/10 bg-card/80 backdrop-blur-xl">
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 h-16 border-b border-white/10">
-        <div className="h-8 w-8 rounded-xl bg-primary/90 shadow-[0_0_24px_rgba(76,145,255,0.45)] flex items-center justify-center">
-          <Zap className="h-4 w-4 text-primary-foreground" />
-        </div>
-        <div>
-          <span className="block font-semibold text-lg tracking-tight leading-none">EVA</span>
-          <span className="text-[11px] text-muted-foreground uppercase tracking-[0.18em]">Content OS</span>
+    <aside className="fixed left-0 top-0 z-20 flex h-screen w-14 flex-col bg-[#0f1729] px-[6px] py-3">
+      <div className="flex flex-col items-center gap-4">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#3b82f6]/15">
+          <Image
+            src={catboxLogo}
+            alt="EVA brand mark"
+            width={36}
+            height={36}
+            className="h-9 w-9 rounded-xl object-cover"
+            priority
+          />
         </div>
       </div>
 
-      <div className="px-3 pt-4">
-        <Link
-          href="/settings"
-          className="flex items-center justify-center rounded-xl bg-primary/90 px-3 py-2.5 text-sm font-medium text-primary-foreground shadow-[0_14px_24px_rgba(66,124,228,0.35)] transition hover:bg-primary"
-        >
-          Add Brand Identity
-        </Link>
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1.5">
-        <p className="px-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Workspace</p>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/")
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all",
-                active
-                  ? "bg-primary/90 text-primary-foreground shadow-[0_10px_22px_rgba(68,126,230,0.4)]"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-              )}
-            >
-              <Icon className="h-4 w-4 flex-shrink-0" />
-              {label}
-            </Link>
-          )
-        })}
+      <nav className="flex flex-1 flex-col items-center justify-center gap-2" aria-label="Main navigation">
+          {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+            const active = pathname === href || pathname.startsWith(href + "/")
+            return (
+              <NavItem key={href} href={href} active={active}>
+                <Icon className="h-5 w-5" aria-hidden="true" />
+                <span className="sr-only">{label}</span>
+              </NavItem>
+            )
+          })}
       </nav>
 
-      {/* Settings at bottom */}
-      <div className="px-3 pb-4 border-t border-white/10 pt-4">
-        <p className="px-2 pb-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80">Account</p>
-        <Link
-          href="/settings"
-          className={cn(
-            "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all",
-            pathname.startsWith("/settings")
-              ? "bg-primary/90 text-primary-foreground shadow-[0_10px_22px_rgba(68,126,230,0.4)]"
-              : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-          )}
-        >
-          <Settings className="h-4 w-4 flex-shrink-0" />
-          Settings
-        </Link>
-        <p className="px-2 pt-3 text-[11px] text-muted-foreground/70">EVA v1 MVP</p>
+      <div className="flex flex-col items-center gap-3">
+        <NavItem href="/settings" active={pathname.startsWith("/settings")}>
+          <Settings className="h-5 w-5" aria-hidden="true" />
+          <span className="sr-only">Settings</span>
+        </NavItem>
+
+        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#6366f1]/20 ring-1 ring-[#6366f1]/35 hover:bg-[#6366f1]/30 transition-colors">
+          <Image
+            src={guitarCatAvatar}
+            alt="User avatar"
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-full object-cover"
+          />
+        </div>
       </div>
     </aside>
   )

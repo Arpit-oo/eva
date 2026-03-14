@@ -22,6 +22,11 @@ function addDays(dateStr: string, days: number): string {
   return d.toISOString().split("T")[0]
 }
 
+function getStrategyMaxDayOffset(days: Array<{ day_of_week: string }>): number {
+  if (!days.length) return 0
+  return Math.max(...days.map((day) => DAY_OFFSET[day.day_of_week] ?? 0))
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient()
   const {
@@ -60,8 +65,11 @@ export async function POST(request: Request) {
   const platforms: string[] = (profile.platforms as string[]) ?? ["LinkedIn"]
   const platformList = platforms.join(", ")
 
-  // Delete any existing posts for this strategy week so regeneration is clean
-  const weekEnd = addDays(strategy.week_start, 6)
+  const { week_theme, days } = strategy.strategy_json
+  const maxDayOffset = getStrategyMaxDayOffset(days)
+
+  // Delete existing posts for the strategy date span so regeneration is clean
+  const weekEnd = addDays(strategy.week_start, maxDayOffset)
   await supabase
     .from("Posts")
     .delete()
@@ -69,9 +77,7 @@ export async function POST(request: Request) {
     .gte("scheduled_date", strategy.week_start)
     .lte("scheduled_date", weekEnd)
 
-  const { week_theme, days } = strategy.strategy_json
-
-  // Generate posts for all 7 days in parallel
+  // Generate posts for all strategy days in parallel
   const dayResults = await Promise.allSettled(
     days.map(async (day: { day_of_week: string; content_type: string; theme: string; target_emotion: string }) => {
       const scheduledDate = addDays(

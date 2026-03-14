@@ -1,13 +1,12 @@
 "use client"
 
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import { useTheme } from "next-themes"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,30 +14,51 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Moon, Sun, LogOut, Settings, User, Plus } from "lucide-react"
+import { LogOut, Settings, User, Search, Bell, Sun, Moon } from "lucide-react"
 
 interface HeaderProps {
   userEmail?: string
   userName?: string
 }
 
+const PAGE_META: Record<string, { greeting?: boolean; title: string; subtitle: string }> = {
+  "/dashboard": { greeting: true, title: "Dashboard", subtitle: "Overview and quick actions" },
+  "/generate": { title: "Generate", subtitle: "Strategy and AI content creation" },
+  "/calendar": { title: "Calendar", subtitle: "Schedule and planning" },
+  "/library": { title: "Library", subtitle: "Saved and generated posts" },
+  "/templates": { title: "Templates", subtitle: "Reusable content blueprints" },
+  "/settings": { title: "Settings", subtitle: "Brand identity and integrations" },
+}
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return "Good morning"
+  if (h < 18) return "Good afternoon"
+  return "Good evening"
+}
+
 export default function Header({ userEmail, userName }: HeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const supabase = createClient()
+  const [searchValue, setSearchValue] = useState("")
+  const [mounted, setMounted] = useState(false)
 
-  const pageMeta: Record<string, { title: string; subtitle: string }> = {
-    "/dashboard": { title: "Dashboard", subtitle: "Overview and quick actions" },
-    "/generate": { title: "Generate", subtitle: "Strategy and AI content creation" },
-    "/calendar": { title: "Calendar", subtitle: "Schedule and planning" },
-    "/library": { title: "Library", subtitle: "Saved and generated posts" },
-    "/templates": { title: "Templates", subtitle: "Reusable content blueprints" },
-    "/settings": { title: "Settings", subtitle: "Brand identity and integrations" },
-  }
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
-  const resolvedPage = Object.keys(pageMeta).find((route) => pathname === route || pathname.startsWith(route + "/"))
-  const currentMeta = pageMeta[resolvedPage ?? "/dashboard"]
+  const resolvedRoute =
+    Object.keys(PAGE_META).find((r) => pathname === r || pathname.startsWith(r + "/")) ??
+    "/dashboard"
+  const meta = PAGE_META[resolvedRoute]
+
+  const displayName = userName ?? userEmail?.split("@")[0] ?? "there"
+
+  const initials = userName
+    ? userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+    : userEmail?.[0]?.toUpperCase() ?? "?"
 
   async function handleSignOut() {
     await supabase.auth.signOut()
@@ -47,71 +67,114 @@ export default function Header({ userEmail, userName }: HeaderProps) {
     router.refresh()
   }
 
-  const initials = userName
-    ? userName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : userEmail?.[0]?.toUpperCase() ?? "?"
+  function handleThemeToggle() {
+    setTheme(resolvedTheme === "light" ? "dark" : "light")
+  }
 
   return (
-    <header className="h-16 border-b border-white/10 bg-card/75 backdrop-blur-xl flex items-center justify-between px-6 gap-4">
-      <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground/90">Workspace</p>
-        <h1 className="text-base font-semibold truncate">{currentMeta.title}</h1>
-        <p className="text-xs text-muted-foreground truncate">{currentMeta.subtitle}</p>
+    <header
+      className="h-[60px] backdrop-blur-xl flex items-center justify-between px-5 gap-4 relative z-10"
+      style={{
+        background: "var(--header-bg)",
+        borderBottom: "1px solid var(--header-border)",
+      }}
+    >
+
+      {/* Left — greeting or page title */}
+      <div className="min-w-0 flex flex-col justify-center">
+        {meta.greeting ? (
+          <>
+            <h1 className="text-[22px] font-medium leading-tight text-foreground">
+              {getGreeting()}, {displayName}
+            </h1>
+            <p className="text-[14px] text-muted-foreground mt-0.5 leading-tight">
+              Here&apos;s your content at a glance.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-[10px] uppercase tracking-[0.22em] text-muted-foreground/80 leading-none">
+              {meta.subtitle}
+            </p>
+            <h1 className="text-sm font-semibold truncate mt-0.5 leading-tight">
+              {meta.title}
+            </h1>
+          </>
+        )}
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button asChild variant="outline" size="sm" className="rounded-xl hidden sm:inline-flex">
-          <Link href="/settings">
-            <Plus className="h-4 w-4" />
-            New Brand Identity
-          </Link>
-        </Button>
+      {/* Right — search + bell + avatar */}
+      <div className="flex items-center gap-2.5">
 
-      {/* Theme toggle */}
-      <Button
-        variant="secondary"
-        size="icon"
-        className="rounded-xl"
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      >
-        <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-        <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-        <span className="sr-only">Toggle theme</span>
-      </Button>
+        {/* Search */}
+        <div className="relative hidden sm:flex items-center">
+          <Search className="absolute left-3 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search posts, ideas…"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            className="h-8 w-44 rounded-full border border-white/10 bg-muted/50 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:border-[rgba(99,102,241,0.4)] focus:bg-muted/80 transition-all duration-200"
+          />
+        </div>
 
-      {/* User menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-          <Avatar className="h-9 w-9 cursor-pointer">
-            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <div className="px-3 py-2">
-            {userName && <p className="text-sm font-medium">{userName}</p>}
-            <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push("/settings")}>
-            <Settings className="mr-2 h-4 w-4" />
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push("/settings#profile")}>
-            <User className="mr-2 h-4 w-4" />
-            Brand Profiles
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={handleSignOut}
-            className="text-destructive focus:text-destructive"
-          >
-            <LogOut className="mr-2 h-4 w-4" />
-            Sign Out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        {/* Bell */}
+        <button className="h-8 w-8 flex items-center justify-center rounded-full border border-white/10 bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted/70 transition-colors">
+          <Bell className="h-3.5 w-3.5" />
+        </button>
+
+        <button
+          aria-label={resolvedTheme === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          onClick={handleThemeToggle}
+          className="h-8 w-8 flex items-center justify-center rounded-full border transition-colors"
+          style={{
+            background: resolvedTheme === "light" ? "rgba(99,130,210,0.12)" : "rgba(255,255,255,0.06)",
+            borderColor: resolvedTheme === "light" ? "rgba(99,130,210,0.2)" : "rgba(255,255,255,0.1)",
+            color: "var(--text-primary-color)",
+          }}
+        >
+          {!mounted ? (
+            <Moon className="h-3.5 w-3.5" />
+          ) : resolvedTheme === "light" ? (
+            <Sun className="h-3.5 w-3.5" />
+          ) : (
+            <Moon className="h-3.5 w-3.5" />
+          )}
+        </button>
+
+        {/* User menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+            <Avatar className="h-8 w-8 cursor-pointer">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="px-3 py-2">
+              {userName && <p className="text-sm font-medium">{userName}</p>}
+              <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/settings#profile")}>
+              <User className="mr-2 h-4 w-4" />
+              Brand Profiles
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleSignOut}
+              className="text-destructive focus:text-destructive"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

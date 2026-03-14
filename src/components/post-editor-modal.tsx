@@ -76,6 +76,40 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
     improved_caption: string
   } | null>(null)
 
+  async function handleUndoDelete() {
+    setSaving(true)
+    try {
+      const res = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: post.platform,
+          caption: post.caption,
+          hashtags: post.hashtags,
+          image_prompt: post.image_prompt,
+          image_url: post.image_url,
+          video_url: post.video_url,
+          scheduled_date: post.scheduled_date,
+          scheduled_time: post.scheduled_time,
+          status: post.status,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error ?? "Undo failed")
+      }
+
+      const data = await res.json()
+      onSaved(data.post as PostRow)
+      toast.success("Post restored")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Undo failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleOpenChange = (o: boolean) => {
     if (o) {
       setCaption(post.caption)
@@ -121,7 +155,9 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
 
       const data = await res.json()
       onSaved(data.post as PostRow)
-      toast.success("Post saved")
+      toast("Post updated!", {
+        description: "Your changes have been saved successfully.",
+      })
       onOpenChange(false)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Save failed")
@@ -140,7 +176,10 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
         throw new Error(err.error ?? "Delete failed")
       }
       onDeleted(post.id)
-      toast.success("Post deleted")
+      toast("Post deleted", {
+        description: "This post has been removed.",
+        action: { label: "Undo", onClick: () => { void handleUndoDelete() } },
+      })
       onOpenChange(false)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Delete failed")
@@ -311,7 +350,10 @@ export function PostEditorModal({ post, open, onOpenChange, onSaved, onDeleted }
 
       const data = await res.json()
       onSaved(data.post as PostRow)
-      toast.success(`Post scheduled for ${scheduledDate} at ${scheduledTime}`)
+      toast("Post scheduled!", {
+        description: "Added to your content calendar.",
+        action: { label: "View Calendar", onClick: () => (window.location.href = "/calendar") },
+      })
       onOpenChange(false)
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Scheduling failed")
