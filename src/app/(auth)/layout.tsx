@@ -1,34 +1,47 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import Script from "next/script"
+import { isLowPerformanceDevice } from "@/lib/performance"
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const vantaRef = useRef<HTMLDivElement>(null)
   const vantaEffect = useRef<{ destroy: () => void } | null>(null)
   const animeInitRef = useRef(false)
+  const [reducedEffects, setReducedEffects] = useState(true)
 
   function initVanta() {
+    const win = window as unknown as {
+      p5?: unknown
+      VANTA?: { TOPOLOGY?: (opts: unknown) => { destroy: () => void } }
+    }
+
     if (
       vantaEffect.current ||
       !vantaRef.current ||
       typeof window === "undefined" ||
-      !(window as unknown as Record<string, unknown>).VANTA
+      !win.p5 ||
+      !win.VANTA ||
+      typeof win.VANTA.TOPOLOGY !== "function"
     ) return
 
-    const VANTA = (window as unknown as Record<string, { TOPOLOGY: (opts: unknown) => { destroy: () => void } }>).VANTA
-    vantaEffect.current = VANTA.TOPOLOGY({
-      el: vantaRef.current,
-      mouseControls: true,
-      touchControls: true,
-      gyroControls: false,
-      minHeight: 200,
-      minWidth: 200,
-      scale: 1.0,
-      scaleMobile: 1.0,
-      color: 0x3a7bd5,
-      backgroundColor: 0x0d1220,
-    })
+    try {
+      vantaEffect.current = win.VANTA.TOPOLOGY({
+        el: vantaRef.current,
+        p5: win.p5,
+        mouseControls: true,
+        touchControls: true,
+        gyroControls: false,
+        minHeight: 200,
+        minWidth: 200,
+        scale: 1.0,
+        scaleMobile: 1.0,
+        color: 0x3a7bd5,
+        backgroundColor: 0x0d1220,
+      })
+    } catch {
+      return
+    }
 
     return true
   }
@@ -72,13 +85,20 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   }
 
   useEffect(() => {
+    if (isLowPerformanceDevice()) {
+      setReducedEffects(true)
+      return
+    }
+
+    setReducedEffects(false)
+
     const timer = window.setInterval(() => {
       initVanta()
     }, 250)
 
     window.setTimeout(() => {
       window.clearInterval(timer)
-    }, 6000)
+    }, 15000)
 
     return () => {
       window.clearInterval(timer)
@@ -93,20 +113,35 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       {/* eslint-disable-next-line @next/next/no-page-custom-font */}
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');`}</style>
 
-      <Script src="/vanta/p5.min.js" strategy="afterInteractive" onLoad={initVanta} />
-      <Script
-        src="/vanta/vanta.topology.min.js"
-        strategy="afterInteractive"
-        onLoad={initVanta}
-      />
-      <Script
-        src="https://cdnjs.cloudflare.com/ajax/libs/animejs/2.0.2/anime.min.js"
-        strategy="afterInteractive"
-        onLoad={initAnime}
-      />
+      {!reducedEffects && (
+        <>
+          <Script src="/vanta/p5.min.js" strategy="afterInteractive" onLoad={initVanta} />
+          <Script
+            src="/vanta/vanta.topology.min.js"
+            strategy="afterInteractive"
+            onLoad={initVanta}
+          />
+          <Script
+            src="https://cdnjs.cloudflare.com/ajax/libs/animejs/2.0.2/anime.min.js"
+            strategy="afterInteractive"
+            onLoad={initAnime}
+          />
+        </>
+      )}
 
       {/* Full-viewport Vanta canvas */}
-      <div ref={vantaRef} className="fixed inset-0 z-0 bg-[hsl(222,30%,9%)]" />
+      <div
+        ref={vantaRef}
+        className="fixed inset-0 z-0 bg-[hsl(222,30%,9%)]"
+        style={
+          reducedEffects
+            ? {
+                background:
+                  "radial-gradient(circle at 20% 20%, rgba(58,123,213,0.22), transparent 45%), radial-gradient(circle at 80% 70%, rgba(99,102,241,0.2), transparent 48%), #0d1220",
+              }
+            : undefined
+        }
+      />
 
       {/* Centered layout over canvas */}
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4 gap-6">
@@ -125,7 +160,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               letterSpacing: "0.55em",
               color: "rgba(200, 220, 255, 0.82)",
               lineHeight: 1,
-              whiteSpace: "nowrap",
+              whiteSpace: reducedEffects ? "normal" : "nowrap",
             }}
           >
             Welcome to EVA
@@ -140,6 +175,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         .ml12 .letter {
           display: inline-block;
           line-height: 1em;
+        }
+        @media (max-width: 640px) {
+          .ml12 {
+            letter-spacing: 0.25em !important;
+            font-size: 1.25rem !important;
+          }
         }
       `}</style>
     </>

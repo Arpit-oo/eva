@@ -8,8 +8,12 @@ export async function GET(
 ) {
   try {
     const platform = params.platform.toLowerCase() as SocialPlatform
-    if (!["linkedin", "twitter"].includes(platform)) {
+    if (!["linkedin", "twitter", "facebook"].includes(platform)) {
       return NextResponse.json({ error: "Unsupported platform" }, { status: 400 })
+    }
+
+    if (platform === "facebook") {
+      return NextResponse.redirect(new URL("/api/social/meta/connect", request.url))
     }
 
     const state = `${Date.now()}:${Math.random().toString(36).slice(2, 12)}`

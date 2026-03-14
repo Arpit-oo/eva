@@ -432,7 +432,26 @@ async function publishToTwitter(post: PostRow, connection: SocialConnectionRow) 
   return data.data.id
 }
 
-async function publishToFacebook(post: PostRow, connection: SocialConnectionRow) {
+export async function publishToFacebook(pageId: string, pageAccessToken: string, message: string) {
+  const params = new URLSearchParams({
+    message,
+    access_token: pageAccessToken,
+  })
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  })
+
+  const raw = await res.text()
+  if (!res.ok) throw new Error(`Facebook publish failed: ${raw}`)
+  const data = parseJsonSafe(raw) as { id?: string }
+  if (!data.id) throw new Error("Facebook publish failed: missing post id")
+  return data.id
+}
+
+async function publishToFacebookFromPost(post: PostRow, connection: SocialConnectionRow) {
   const message = `${post.caption}\n\n${(post.hashtags ?? []).map((h) => `#${h}`).join(" ")}`.trim()
 
   if (post.video_url) {
@@ -473,21 +492,7 @@ async function publishToFacebook(post: PostRow, connection: SocialConnectionRow)
     return data.post_id ?? data.id!
   }
 
-  const params = new URLSearchParams({
-    message,
-    access_token: connection.access_token,
-  })
-  const res = await fetch(`https://graph.facebook.com/v19.0/${connection.platform_user_id}/feed`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
-  })
-
-  const raw = await res.text()
-  if (!res.ok) throw new Error(`Facebook publish failed: ${raw}`)
-  const data = parseJsonSafe(raw) as { id?: string }
-  if (!data.id) throw new Error("Facebook publish failed: missing post id")
-  return data.id
+  return publishToFacebook(connection.platform_user_id, connection.access_token, message)
 }
 
 async function publishToInstagram(post: PostRow, connection: SocialConnectionRow) {
@@ -568,7 +573,7 @@ async function publishToInstagram(post: PostRow, connection: SocialConnectionRow
 export async function publishPostToPlatform(post: PostRow, connection: SocialConnectionRow) {
   if (post.platform === "linkedin") return publishToLinkedIn(post, connection)
   if (post.platform === "twitter") return publishToTwitter(post, connection)
-  if (post.platform === "facebook") return publishToFacebook(post, connection)
+  if (post.platform === "facebook") return publishToFacebookFromPost(post, connection)
   if (post.platform === "instagram") return publishToInstagram(post, connection)
   throw new Error(`Unsupported platform: ${post.platform}`)
 }

@@ -3,6 +3,8 @@ import { waitUntil } from "@vercel/functions"
 import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 import type { StrategyJson } from "@/lib/types"
+import type { PostRow, SocialConnectionRow } from "@/lib/types"
+import { publishPostToPlatform } from "@/lib/social"
 
 // Allow up to 60s on Vercel Pro for /generate_week
 export const maxDuration = 60
@@ -49,6 +51,302 @@ const DAY_OFFSET: Record<string, number> = {
 }
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
+function toSortableDateTime(post: PostRow): number {
+  if (!post.scheduled_date) return Number.MAX_SAFE_INTEGER
+  const time = post.scheduled_time ?? "23:59"
+  return new Date(`${post.scheduled_date}T${time}`).getTime()
+}
+
+function formatPostPreview(post: PostRow) {
+  const caption = (post.caption ?? "(no caption)").replace(/\n+/g, " ")
+  return caption.length > 70 ? `${caption.slice(0, 70)}...` : caption
+}
+
+async function loadCandidatePosts(userId: string, statuses: Array<PostRow["status"]>) {
+  const supabase = adminClient()
+  const { data, error } = await supabase
+    .from("Posts")
+    .select("*")
+    .eq("user_id", userId)
+    .in("status", statuses)
+
+  if (error) throw new Error("Failed to load posts")
+  return (data ?? []) as PostRow[]
+}
+
+function findPostByPrefix(posts: PostRow[], idOrPrefix: string) {
+  const token = idOrPrefix.trim().toLowerCase()
+  const matches = posts.filter((p) => p.id.toLowerCase() === token || p.id.toLowerCase().startsWith(token))
+
+  if (matches.length === 0) throw new Error("Post ID not found. Run `/posts` to get valid IDs.")
+  if (matches.length > 1) throw new Error("That short ID matches multiple posts. Please use more characters.")
+  return matches[0]
+}
+
+async function handleListPostsByFilter(
+  chatId: number,
+  userId: string,
+  options: {
+    title: string
+    limit?: number
+    statuses?: Array<PostRow["status"]>
+    platform?: PostRow["platform"]
+  }
+) {
+  try {
+    const limit = Math.min(Math.max(options.limit ?? 8, 1), 20)
+    let posts = await loadCandidatePosts(userId, options.statuses ?? ["draft", "scheduled"])
+
+    if (options.platform) {
+      posts = posts.filter((post) => post.platform === options.platform)
+    }
+
+    posts = posts.sort((a, b) => toSortableDateTime(a) - toSortableDateTime(b)).slice(0, limit)
+
+    if (posts.length === 0) {
+      await sendMessage(chatId, `📭 No matching posts found for ${options.title.toLowerCase()}.`)
+      return
+    }
+
+    const lines = posts.map((post) => {
+      const shortId = post.id.slice(0, 8)
+      const when = post.scheduled_date
+        ? `${post.scheduled_date}${post.scheduled_time ? ` ${post.scheduled_time}` : ""}`
+        : "unscheduled"
+      return `• \`${shortId}\` | ${post.platform} | ${post.status} | ${when}\n  ${formatPostPreview(post)}`
+    })
+
+    await sendMessage(chatId, `📝 *${options.title}*\n\n${lines.join("\n\n")}`)
+  } catch {
+    await sendMessage(chatId, "❌ Failed to load posts. Please try again.")
+  }
+}
+
+async function handlePostDetails(chatId: number, userId: string, idOrPrefix: string) {
+  if (!idOrPrefix.trim()) {
+    await sendMessage(chatId, "❌ Usage: `/post <post_id>`")
+    return
+  }
+
+  try {
+    const posts = await loadCandidatePosts(userId, ["draft", "scheduled", "published", "failed"])
+    const post = findPostByPrefix(posts, idOrPrefix)
+    const hashtags = (post.hashtags ?? []).slice(0, 8).map((tag) => `#${tag}`).join(" ") || "-"
+    const when = post.scheduled_date
+      ? `${post.scheduled_date}${post.scheduled_time ? ` ${post.scheduled_time}` : ""}`
+      : "unscheduled"
+
+    await sendMessage(
+      chatId,
+      `📄 *Post details*\n\nID: \`${post.id.slice(0, 8)}\`\nPlatform: *${post.platform}*\nStatus: *${post.status}*\nWhen: ${when}\n\n${formatPostPreview(post)}\n\nHashtags: ${hashtags}`
+    )
+  } catch (err) {
+    await sendMessage(chatId, err instanceof Error ? `❌ ${err.message}` : "❌ Failed to load post details.")
+  }
+}
+
+async function handlePlatformPublish(chatId: number, userId: string, idOrPrefix: string, platform: PostRow["platform"]) {
+  if (!idOrPrefix.trim()) {
+    await sendMessage(chatId, `❌ Usage: \/publish_${platform} <post_id>`)
+    return
+  }
+
+  try {
+    const posts = await loadCandidatePosts(userId, ["draft", "scheduled", "failed"])
+    const post = findPostByPrefix(posts.filter((entry) => entry.platform === platform), idOrPrefix)
+    await handlePublishPost(chatId, userId, post.id)
+  } catch (err) {
+    await sendMessage(chatId, err instanceof Error ? `❌ ${err.message}` : "❌ Publish failed.")
+  }
+}
+
+async function handleStatus(chatId: number, userId: string) {
+  const supabase = adminClient()
+  const [{ data: posts }, { data: strategies }, { data: connections }] = await Promise.all([
+    supabase.from("Posts").select("status, scheduled_date").eq("user_id", userId),
+    supabase.from("Strategies").select("week_start").eq("user_id", userId).order("created_at", { ascending: false }).limit(1),
+    supabase.from("SocialConnections").select("platform, status").eq("user_id", userId),
+  ])
+
+  const postRows = posts ?? []
+  const scheduled = postRows.filter((post) => post.status === "scheduled").length
+  const drafts = postRows.filter((post) => post.status === "draft").length
+  const published = postRows.filter((post) => post.status === "published").length
+  const failed = postRows.filter((post) => post.status === "failed").length
+  const connectedPlatforms = (connections ?? []).filter((connection) => connection.status === "active")
+  const latestStrategy = strategies?.[0]?.week_start ?? "none"
+
+  await sendMessage(
+    chatId,
+    `📊 *EVA Status*\n\nDrafts: *${drafts}*\nScheduled: *${scheduled}*\nPublished: *${published}*\nFailed: *${failed}*\nConnected platforms: *${connectedPlatforms.length}*\nLatest strategy week: *${latestStrategy}*`
+  )
+}
+
+async function handleToday(chatId: number, userId: string) {
+  const supabase = adminClient()
+  const today = new Date().toISOString().split("T")[0]
+
+  const { data, error } = await supabase
+    .from("Posts")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("scheduled_date", today)
+
+  if (error) {
+    await sendMessage(chatId, "❌ Failed to load today's posts.")
+    return
+  }
+
+  const posts = ((data ?? []) as PostRow[]).sort((a, b) => toSortableDateTime(a) - toSortableDateTime(b))
+
+  if (posts.length === 0) {
+    await sendMessage(chatId, "📭 No posts scheduled for today.")
+    return
+  }
+
+  const lines = posts.map((post) => {
+    const time = post.scheduled_time ?? "unscheduled time"
+    return `• ${time} | *${post.platform}* | ${post.status}\n  ${formatPostPreview(post)}`
+  })
+
+  await sendMessage(chatId, `🗓️ *Today's posts*\n\n${lines.join("\n\n")}`)
+}
+
+async function handleProfile(chatId: number, userId: string) {
+  const supabase = adminClient()
+  const { data: userData } = await supabase
+    .from("Users")
+    .select("active_brand_profile_id")
+    .eq("id", userId)
+    .single()
+
+  if (!userData?.active_brand_profile_id) {
+    await sendMessage(chatId, "📌 No active brand profile set. Open EVA Settings and choose one.")
+    return
+  }
+
+  const { data: profile, error } = await supabase
+    .from("BrandProfiles")
+    .select("brand_name, industry, tone, audience, posting_frequency, platforms")
+    .eq("id", userData.active_brand_profile_id)
+    .single()
+
+  if (error || !profile) {
+    await sendMessage(chatId, "❌ Failed to load active brand profile.")
+    return
+  }
+
+  const platforms = Array.isArray(profile.platforms) ? profile.platforms.join(", ") : "none"
+  await sendMessage(
+    chatId,
+    `🏷️ *Active Profile*\n\nName: *${profile.brand_name}*\nIndustry: ${profile.industry ?? "-"}\nTone: ${profile.tone ?? "-"}\nFrequency: ${profile.posting_frequency ?? "-"}\nPlatforms: ${platforms}\nAudience: ${profile.audience ? String(profile.audience).slice(0, 120) : "-"}`
+  )
+}
+
+async function handleConnections(chatId: number, userId: string) {
+  const supabase = adminClient()
+  const { data, error } = await supabase
+    .from("SocialConnections")
+    .select("platform, platform_username, status")
+    .eq("user_id", userId)
+
+  if (error) {
+    await sendMessage(chatId, "❌ Failed to load connected platforms.")
+    return
+  }
+
+  const connections = data ?? []
+  if (connections.length === 0) {
+    await sendMessage(chatId, "🔌 No social accounts connected yet. Connect them in EVA Settings.")
+    return
+  }
+
+  const lines = connections.map((connection) => {
+    const handle = connection.platform_username ? ` as ${connection.platform_username}` : ""
+    return `• *${connection.platform}*${handle} (${connection.status})`
+  })
+
+  await sendMessage(chatId, `🔗 *Connected platforms*\n\n${lines.join("\n")}`)
+}
+
+async function handleListPosts(chatId: number, userId: string, requestedLimit = 8) {
+  await handleListPostsByFilter(chatId, userId, {
+    title: `Your next ${Math.min(Math.max(requestedLimit, 1), 20)} posts`,
+    limit: requestedLimit,
+    statuses: ["draft", "scheduled"],
+  })
+  await sendMessage(chatId, "Use `/publish <id>` with one of the IDs above.")
+}
+
+async function handlePublishPost(chatId: number, userId: string, idOrPrefix: string) {
+  const supabase = adminClient()
+  const token = idOrPrefix.trim().toLowerCase()
+
+  if (!token) {
+    await sendMessage(chatId, "❌ Usage: `/publish <post_id>`\nTip: run `/posts` to see IDs.")
+    return
+  }
+
+  let post: PostRow
+  try {
+    const candidates = await loadCandidatePosts(userId, ["draft", "scheduled", "failed"])
+    post = findPostByPrefix(candidates, token)
+  } catch (err) {
+    await sendMessage(chatId, err instanceof Error ? `❌ ${err.message}` : "❌ Failed to load posts. Please try again.")
+    return
+  }
+
+  if (post.platform === "twitter") {
+    await sendMessage(chatId, "❌ Direct publishing to Twitter/X is disabled in MVP.")
+    return
+  }
+
+  const { data: connection, error: connErr } = await supabase
+    .from("SocialConnections")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("platform", post.platform)
+    .single()
+
+  if (connErr || !connection) {
+    await sendMessage(chatId, `❌ No ${post.platform} account connected in EVA Settings.`)
+    await supabase
+      .from("Posts")
+      .update({ status: "failed", publish_error: `No ${post.platform} account connected` })
+      .eq("id", post.id)
+    return
+  }
+
+  await sendMessage(chatId, `🚀 Publishing \`${post.id.slice(0, 8)}\` to *${post.platform}*...`)
+
+  try {
+    const platformPostId = await publishPostToPlatform(post, connection as SocialConnectionRow)
+
+    await supabase
+      .from("Posts")
+      .update({
+        status: "published",
+        platform_post_id: platformPostId,
+        publish_error: null,
+        published_at: new Date().toISOString(),
+      })
+      .eq("id", post.id)
+
+    await sendMessage(
+      chatId,
+      `✅ Published successfully!\n\nPlatform: *${post.platform}*\nPost ID: \`${post.id.slice(0, 8)}\`\nRemote ID: \`${platformPostId}\``
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message.slice(0, 800) : "Publish failed"
+    await supabase
+      .from("Posts")
+      .update({ status: "failed", publish_error: message })
+      .eq("id", post.id)
+
+    await sendMessage(chatId, `❌ Publish failed:\n\n${message}`)
+  }
+}
+
 // ─── Command handlers ─────────────────────────────────────────────────────────
 
 async function handleStart(chatId: number, token: string) {
@@ -80,7 +378,7 @@ async function handleStart(chatId: number, token: string) {
     .update({ telegram_chat_id: String(chatId) })
     .eq("id", user.id)
 
-  await sendMessage(chatId, "🎉 *Account linked!*\n\nYou can now use:\n• `/capture_idea <your idea>` — save an idea\n• `/generate_week` — generate this week's content plan")
+  await sendMessage(chatId, "🎉 *Account linked!*\n\nYou can now use:\n• `/capture_idea <your idea>` — save an idea\n• `/generate_week` — generate this week's content plan\n• `/posts` — list draft and scheduled posts\n• `/status` — quick account snapshot")
 }
 
 async function handleCaptureIdea(chatId: number, userId: string, ideaText: string) {
@@ -409,10 +707,87 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true })
   }
 
+  // ── /posts [limit] ───────────────────────────────────────────────────────────
+  if (text.startsWith("/posts")) {
+    const maybeLimit = Number(text.replace("/posts", "").trim())
+    const limit = Number.isFinite(maybeLimit) ? maybeLimit : 8
+    waitUntil(handleListPosts(chatId, user.id, limit))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /drafts [limit] ─────────────────────────────────────────────────────────
+  if (text.startsWith("/drafts")) {
+    const maybeLimit = Number(text.replace("/drafts", "").trim())
+    const limit = Number.isFinite(maybeLimit) ? maybeLimit : 8
+    waitUntil(handleListPostsByFilter(chatId, user.id, { title: "Draft posts", limit, statuses: ["draft"] }))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /failed [limit] ─────────────────────────────────────────────────────────
+  if (text.startsWith("/failed")) {
+    const maybeLimit = Number(text.replace("/failed", "").trim())
+    const limit = Number.isFinite(maybeLimit) ? maybeLimit : 8
+    waitUntil(handleListPostsByFilter(chatId, user.id, { title: "Failed posts", limit, statuses: ["failed"] }))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /linkedin_posts [limit] ────────────────────────────────────────────────
+  if (text.startsWith("/linkedin_posts")) {
+    const maybeLimit = Number(text.replace("/linkedin_posts", "").trim())
+    const limit = Number.isFinite(maybeLimit) ? maybeLimit : 8
+    waitUntil(handleListPostsByFilter(chatId, user.id, { title: "LinkedIn posts", limit, statuses: ["draft", "scheduled", "failed"], platform: "linkedin" }))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /post <post_id> ────────────────────────────────────────────────────────
+  if (text.startsWith("/post")) {
+    const idOrPrefix = text.replace("/post", "").trim()
+    waitUntil(handlePostDetails(chatId, user.id, idOrPrefix))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /today ──────────────────────────────────────────────────────────────────
+  if (text.startsWith("/today")) {
+    waitUntil(handleToday(chatId, user.id))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /status ─────────────────────────────────────────────────────────────────
+  if (text.startsWith("/status")) {
+    waitUntil(handleStatus(chatId, user.id))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /profile ────────────────────────────────────────────────────────────────
+  if (text.startsWith("/profile")) {
+    waitUntil(handleProfile(chatId, user.id))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /connections ────────────────────────────────────────────────────────────
+  if (text.startsWith("/connections")) {
+    waitUntil(handleConnections(chatId, user.id))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /publish <post_id> ───────────────────────────────────────────────────────
+  if (text.startsWith("/publish")) {
+    const idOrPrefix = text.replace("/publish", "").trim()
+    waitUntil(handlePublishPost(chatId, user.id, idOrPrefix))
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── /publish_linkedin <post_id> ────────────────────────────────────────────
+  if (text.startsWith("/publish_linkedin")) {
+    const idOrPrefix = text.replace("/publish_linkedin", "").trim()
+    waitUntil(handlePlatformPublish(chatId, user.id, idOrPrefix, "linkedin"))
+    return NextResponse.json({ ok: true })
+  }
+
   // ── /help or unknown ─────────────────────────────────────────────────────────
   await sendMessage(
     chatId,
-    "🤖 *EVA Content Bot*\n\nAvailable commands:\n• `/capture_idea <text>` — save an idea & draft a post\n• `/generate_week` — generate this week's full content plan\n• `/start <token>` — link your EVA account"
+    "🤖 *EVA Content Bot*\n\nAvailable commands:\n• `/capture_idea <text>` — save an idea & draft a post\n• `/generate_week` — generate this week's full content plan\n• `/posts [limit]` — list your draft/scheduled posts\n• `/drafts [limit]` — list only draft posts\n• `/failed [limit]` — list failed posts\n• `/linkedin_posts [limit]` — list LinkedIn-ready posts\n• `/post <post_id>` — show details for one post\n• `/publish <post_id>` — publish one post now\n• `/publish_linkedin <post_id>` — publish one LinkedIn post now\n• `/today` — show today's scheduled posts\n• `/status` — account and content summary\n• `/profile` — show your active brand profile\n• `/connections` — list connected social platforms\n• `/start <token>` — link your EVA account"
   )
   return NextResponse.json({ ok: true })
 }

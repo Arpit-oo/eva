@@ -42,6 +42,43 @@ const FREQUENCY_LABELS: Record<string, string> = {
   biweekly: "Bi-weekly",
 }
 
+const SOCIAL_PLATFORM_META: Record<SocialPlatform, {
+  label: string
+  disconnectedLabel: string
+  connectedLabel: string
+  connectButton: string
+  disconnectButton: string
+}> = {
+  linkedin: {
+    label: "LinkedIn",
+    disconnectedLabel: "Not connected",
+    connectedLabel: "Connected as",
+    connectButton: "Connect",
+    disconnectButton: "Disconnect",
+  },
+  twitter: {
+    label: "X (Twitter)",
+    disconnectedLabel: "Not connected",
+    connectedLabel: "Connected as",
+    connectButton: "Connect",
+    disconnectButton: "Disconnect",
+  },
+  facebook: {
+    label: "Facebook Page",
+    disconnectedLabel: "No Facebook Page linked",
+    connectedLabel: "Linked Page",
+    connectButton: "Link Page",
+    disconnectButton: "Unlink Page",
+  },
+  instagram: {
+    label: "Instagram",
+    disconnectedLabel: "Not connected",
+    connectedLabel: "Connected as",
+    connectButton: "Connect",
+    disconnectButton: "Disconnect",
+  },
+}
+
 interface ProfileFormData {
   brand_name: string
   industry: string
@@ -85,7 +122,11 @@ export default function SettingsPage() {
     const connected = params.get("social_connected")
     const socialError = params.get("social_error")
     if (connected) {
-      toast.success(`${connected} account connected`)
+      if (connected === "facebook") {
+        toast.success("Facebook Page linked")
+      } else {
+        toast.success(`${connected} account connected`)
+      }
       window.history.replaceState({}, "", window.location.pathname)
     }
     if (socialError) {
@@ -253,7 +294,7 @@ export default function SettingsPage() {
               Each profile has its own voice, tone, and content strategy.
             </CardDescription>
           </div>
-          <Button size="sm" onClick={openCreate} className="rounded-xl w-full sm:w-auto">
+          <Button size="sm" onClick={openCreate} className="calendar-refresh-btn rounded-xl w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-1" />
             New Profile
           </Button>
@@ -311,7 +352,7 @@ export default function SettingsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-xs rounded-xl"
+                        className="calendar-refresh-btn text-xs rounded-xl"
                         onClick={() => handleSetActive(p.id)}
                       >
                         Set Active
@@ -321,7 +362,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => openEdit(p)}
-                      className="rounded-xl"
+                      className="calendar-refresh-btn rounded-xl"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -329,7 +370,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDelete(p.id)}
-                      className="rounded-xl text-muted-foreground hover:text-destructive"
+                      className="calendar-refresh-btn rounded-xl"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -346,20 +387,20 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Social Integrations</CardTitle>
           <CardDescription>
-            Connect social accounts to publish immediately or schedule auto-publishing.
+            Connect social accounts to publish immediately or schedule auto-publishing. Facebook links a Page, not a personal profile.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {(["linkedin", "twitter"] as SocialPlatform[]).map((platform) => {
+          {(["linkedin", "twitter", "facebook"] as SocialPlatform[]).map((platform) => {
             const connection = getConnection(platform)
-            const label = platform === "twitter" ? "X (Twitter)" : platform.charAt(0).toUpperCase() + platform.slice(1)
+            const meta = SOCIAL_PLATFORM_META[platform]
             const description = connection
-              ? `Connected as ${connection.platform_username ?? connection.platform_user_id}`
-              : "Not connected"
+              ? `${meta.connectedLabel} ${connection.platform_username ?? connection.platform_user_id}`
+              : meta.disconnectedLabel
             return (
               <div key={platform} className="flex flex-col gap-3 rounded-xl border border-white/10 bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-medium text-sm">{label}</p>
+                  <p className="font-medium text-sm">{meta.label}</p>
                   <p className="text-xs text-muted-foreground">{description}</p>
                 </div>
                 {connection ? (
@@ -368,28 +409,28 @@ export default function SettingsPage() {
                     size="sm"
                     onClick={() => disconnectPlatform(platform)}
                     disabled={disconnectingPlatform === platform}
-                    className="gap-1.5 rounded-xl w-full sm:w-auto"
+                    className="calendar-refresh-btn gap-1.5 rounded-xl w-full sm:w-auto"
                   >
                     {disconnectingPlatform === platform ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Unlink2 className="h-3.5 w-3.5" />
                     )}
-                    Disconnect
+                    {meta.disconnectButton}
                   </Button>
                 ) : (
                   <Button
                     size="sm"
                     onClick={() => connectPlatform(platform)}
                     disabled={!!connectingPlatform}
-                    className="gap-1.5 rounded-xl w-full sm:w-auto"
+                    className="calendar-refresh-btn gap-1.5 rounded-xl w-full sm:w-auto"
                   >
                     {connectingPlatform === platform ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Link2 className="h-3.5 w-3.5" />
                     )}
-                    Connect
+                    {meta.connectButton}
                   </Button>
                 )}
               </div>
@@ -435,7 +476,7 @@ export default function SettingsPage() {
                 <code className="flex-1 rounded-xl bg-muted px-3 py-2 text-sm font-mono break-all">
                   {telegramToken}
                 </code>
-                <Button variant="outline" size="icon" onClick={copyToken} className="rounded-xl self-end sm:self-auto">
+                <Button variant="outline" size="icon" onClick={copyToken} className="calendar-refresh-btn rounded-xl self-end sm:self-auto">
                   <Copy className="h-4 w-4" />
                 </Button>
               </div>
@@ -446,7 +487,7 @@ export default function SettingsPage() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="rounded-xl self-end sm:self-auto"
+                  className="calendar-refresh-btn rounded-xl self-end sm:self-auto"
                   onClick={() => {
                     navigator.clipboard.writeText(`/start ${telegramToken}`)
                     toast.success("Command copied!")
@@ -566,7 +607,7 @@ export default function SettingsPage() {
                   placeholder="Type and press Enter"
                   className="eva-input"
                 />
-                <Button variant="outline" size="sm" onClick={addKeyword} className="rounded-xl">
+                <Button variant="outline" size="sm" onClick={addKeyword} className="calendar-refresh-btn rounded-xl">
                   Add
                 </Button>
               </div>
@@ -587,10 +628,10 @@ export default function SettingsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="calendar-refresh-btn rounded-xl">
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving} className="rounded-xl">
+            <Button onClick={handleSave} disabled={saving} className="calendar-refresh-btn rounded-xl">
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {editingId ? "Save Changes" : "Create Profile"}
             </Button>

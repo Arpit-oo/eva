@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { PostEditorModal } from "@/components/post-editor-modal"
 import type { PostRow } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { isLowPerformanceDevice } from "@/lib/performance"
 
 import FullCalendar from "@fullcalendar/react"
 import dayGridPlugin from "@fullcalendar/daygrid"
@@ -46,6 +47,7 @@ const PLATFORM_ICON: Record<string, React.ComponentType<{ className?: string }>>
 function EventContent({ eventInfo }: { eventInfo: EventContentArg }) {
   const platform = eventInfo.event.extendedProps.platform as string
   const status = eventInfo.event.extendedProps.status as string
+  const reducedEffects = eventInfo.event.extendedProps.reducedEffects as boolean | undefined
   const dotColor = PLATFORM_COLORS[platform] ?? "#5f8fff"
 
   return (
@@ -54,7 +56,7 @@ function EventContent({ eventInfo }: { eventInfo: EventContentArg }) {
         className="mt-1 h-2 w-2 shrink-0 rounded-full"
         style={{
           backgroundColor: dotColor,
-          boxShadow: `0 0 10px ${dotColor}66`,
+          boxShadow: reducedEffects ? "none" : `0 0 10px ${dotColor}66`,
           opacity: status === "published" ? 0.6 : 1,
         }}
       />
@@ -90,12 +92,14 @@ function currentDateString() {
 
 export default function CalendarPage() {
   const calendarRef = useRef<FullCalendar | null>(null)
+  const [reducedEffects, setReducedEffects] = useState(false)
+  const [isTouchDevice, setIsTouchDevice] = useState(false)
   const [posts, setPosts] = useState<PostRow[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPost, setSelectedPost] = useState<PostRow | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string>(currentDateString())
-  const [calendarView, setCalendarView] = useState<"dayGridMonth" | "timeGridWeek">("dayGridMonth")
+  const [calendarView, setCalendarView] = useState<"dayGridMonth" | "timeGridWeek">("timeGridWeek")
   const [agendaOrderMap, setAgendaOrderMap] = useState<Record<string, string[]>>({})
   const [draggingAgendaId, setDraggingAgendaId] = useState<string | null>(null)
   const [dragOverAgendaId, setDragOverAgendaId] = useState<string | null>(null)
@@ -113,6 +117,13 @@ export default function CalendarPage() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    const touch = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0
+    setIsTouchDevice(touch)
+    setReducedEffects(isLowPerformanceDevice())
+    setCalendarView(window.innerWidth < 768 ? "timeGridWeek" : "dayGridMonth")
   }, [])
 
   useEffect(() => {
@@ -180,7 +191,7 @@ export default function CalendarPage() {
       title: p.caption?.split("\n")[0]?.slice(0, 60) ?? "(no caption)",
       start: `${p.scheduled_date}T${p.scheduled_time ?? "09:00:00"}`,
       allDay: false,
-      extendedProps: { platform: p.platform, status: p.status },
+      extendedProps: { platform: p.platform, status: p.status, reducedEffects },
     }))
 
   const unscheduledPosts = posts.filter((p) => !p.scheduled_date)
@@ -349,7 +360,7 @@ export default function CalendarPage() {
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
+            initialView={calendarView}
             events={events}
             eventClick={handleEventClick}
             dateClick={handleDateClick}
@@ -367,12 +378,13 @@ export default function CalendarPage() {
               return classes
             }}
             height="auto"
-            dayMaxEvents={3}
-            eventMinHeight={56}
-            eventShortHeight={56}
+            dayMaxEvents={reducedEffects ? 2 : 3}
+            eventMinHeight={reducedEffects ? 46 : 56}
+            eventShortHeight={reducedEffects ? 46 : 56}
             slotEventOverlap={false}
             slotMinTime="06:00:00"
             slotMaxTime="22:00:00"
+            progressiveEventRendering
           />
         </div>
 
@@ -398,8 +410,9 @@ export default function CalendarPage() {
             {agendaPosts.map((post) => (
               <button
                 key={post.id}
-                draggable
+                draggable={!isTouchDevice}
                 onDragStart={(event) => {
+                  if (isTouchDevice) return
                   handleAgendaDragStart(post.id)
                   event.dataTransfer.effectAllowed = "move"
                   event.dataTransfer.setData("text/plain", post.id)
@@ -427,7 +440,7 @@ export default function CalendarPage() {
                 )}
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
-                    <GripVertical className="agenda-drag-handle h-3.5 w-3.5 shrink-0 cursor-grab" />
+                    {!isTouchDevice && <GripVertical className="agenda-drag-handle h-3.5 w-3.5 shrink-0 cursor-grab" />}
                     <Badge
                       variant="secondary"
                       className="calendar-platform-badge capitalize rounded-full"

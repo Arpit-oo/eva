@@ -230,6 +230,7 @@ export default function DashboardPage() {
               })
             }
             className="calendar-refresh-btn flex items-center gap-2 shrink-0 px-4 py-2"
+            style={{ color: "#ffffff" }}
           >
             <Image src={catSleepIcon} alt="Cat sleep" width={16} height={16} className="rounded-sm object-cover" />
             Generate This Week

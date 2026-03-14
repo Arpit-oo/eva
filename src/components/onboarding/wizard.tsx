@@ -289,6 +289,7 @@ export default function OnboardingWizard() {
               {[
                 { name: "LinkedIn", color: "bg-[#0077B5]", icon: "in" },
                 { name: "Twitter / X", color: "bg-black", icon: "𝕏" },
+                { name: "Facebook", color: "bg-[#1877F2]", icon: "f" },
               ].map(({ name, color, icon }) => (
                 <div
                   key={name}
@@ -304,7 +305,12 @@ export default function OnboardingWizard() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const platform = name === "LinkedIn" ? "linkedin" : "twitter"
+                      const platform =
+                        name === "LinkedIn"
+                          ? "linkedin"
+                          : name === "Twitter / X"
+                          ? "twitter"
+                          : "facebook"
                       window.location.href = `/api/social/connect/${platform}`
                     }}
                   >
